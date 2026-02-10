@@ -19,8 +19,10 @@ You should first reason step-by-step about the current situation, then think car
 Once you've finished your reasoning, you should choose an available action for current step and present it within <action> </action> tags.
 
 Available Actions:
-- <action>open/close [OBJ]</action>: open/close a container
-- <action>activate/deactivate [OBJ]</action>: activate/deactivate a device
+- <action>open [OBJ]</action>: open a container
+- <action>close [OBJ]</action>: close a container
+- <action>activate [OBJ]</action>: activate a device
+- <action>deactivate [OBJ]</action>: deactivate a device
 - <action>connect [OBJ] to [OBJ]</action>: connect electrical components
 - <action>disconnect [OBJ]</action>: disconnect electrical components
 - <action>use [OBJ] [on OBJ]</action>: use a device/item
@@ -53,10 +55,12 @@ Available Actions:
 - <action>go to [LOCATION]</action>: to move to a specified location in the house.
 - <action>take [OBJECT] from [RECEPTACLE]</action>: to take an object from a receptacle.
 - <action>put [OBJECT] in/on [RECEPTACLE]</action>: to put an object into or onto a receptacle.
-- <action>open/close [RECEPTACLE]</action>: to open or close a receptacle.
+- <action>open [RECEPTACLE]</action>: to open a receptacle.
+- <action>close [RECEPTACLE]</action>: to close a receptacle.
 - <action>toggle [OBJECT] [RECEPTACLE]</action>: to toggle the state of an object or receptacle (e.g., turn on/off).
 - <action>clean [OBJECT] with [RECEPTACLE]</action>: to clean an object using a receptacle.
-- <action>heat/cool [OBJECT] with [RECEPTACLE]</action>: to heat or cool an object using a receptacle.
+- <action>heat [OBJECT] with [RECEPTACLE]</action>: to heat an object using a receptacle.
+- <action>cool [OBJECT] with [RECEPTACLE]</action>: to cool an object using a receptacle.
 - <action>inventory</action>: to list the objects currently in your inventory.
 - <action>look</action>: to observe your current surroundings.
 - <action>examine [OBJECT]</action>: to examine an object in detail.
