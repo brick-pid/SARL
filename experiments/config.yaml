@@ -1,0 +1,9 @@
+custom_config:
+  max_turns: 50
+  subagent_max_turns: 10
+  enable_subagent: false
+  env_addresses:
+    webshop: http://localhost:36001
+    alfworld: http://localhost:36002
+    sciworld: http://localhost:36003
+    searchqa: http://localhost:36004
