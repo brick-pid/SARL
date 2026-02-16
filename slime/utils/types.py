@@ -37,6 +37,7 @@ class Sample:
         # external API error, parsing error). Unlike ABORTED, FAILED samples may still contain partial
         # valid output and can be retried or handled gracefully.
         FAILED = "failed"
+        DROP = "drop"
 
     status: Status = Status.PENDING
 

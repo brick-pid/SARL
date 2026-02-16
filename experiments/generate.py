@@ -66,7 +66,7 @@ async def generate(args: Any, sample: Sample, sampling_params: dict, evaluation:
     sample.metadata["task_id"] = task_id
     subagent_samples: list[Sample] = []
 
-    breakpoint()
+    # breakpoint()
     env = GymEnv(env_name=data_source, address=env_address)
     try:
         # --- Environment reset ---
@@ -193,9 +193,12 @@ async def generate(args: Any, sample: Sample, sampling_params: dict, evaluation:
         all_samples = _post_process(samples=all_samples, reward_strategy="simple")
         return all_samples
 
-    except Exception:
+    except Exception as e:
         logger.exception("Error during rollout")
-        return []
+        sample.status = Sample.Status.DROP
+        sample.metadata["error"] = str(e)
+        sample.reward = 0.0
+        return [sample]
 
     finally:
         await env.close()
