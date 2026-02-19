@@ -54,6 +54,7 @@ ROLLOUT_ARGS=(
    --global-batch-size 256
    --balance-data
    --sglang-server-concurrency 32
+   # --debug-rollout-only
 )
 
 EVAL_ARGS=(

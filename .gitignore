@@ -192,3 +192,8 @@ glm/
 _examples_synced/
 .env
 .DS_Store
+
+
+dump/
+models/
+tensorboard_log/

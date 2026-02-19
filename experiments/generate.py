@@ -66,143 +66,136 @@ async def generate(args: Any, sample: Sample, sampling_params: dict, evaluation:
     sample.metadata["task_id"] = task_id
     subagent_samples: list[Sample] = []
 
-    # breakpoint()
+    # --- Environment Init ---
     env = GymEnv(env_name=data_source, address=env_address)
-    try:
-        # --- Environment reset ---
-        obs, info = await env.reset(task_id=task_id)
+    obs, info = await env.reset(task_id=task_id)
 
-        # --- Build prompt: system + obs as user turn ---
-        system_prompt = env2system_prompt[data_source]
-        if config.get("enable_subagent", False):
-            system_prompt += "\n\n" + subagent_prompt_patch
-        chat_messages = [
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": obs},
-        ]
-        prompt_ids = tokenizer.apply_chat_template(
-            chat_messages, tokenize=True, add_generation_prompt=True
-        )
+    # --- Build prompt: system + obs as user turn ---
+    system_prompt = env2system_prompt[data_source]
+    if config.get("enable_subagent", False):
+        system_prompt += "\n\n" + subagent_prompt_patch
+    chat_messages = [
+        {"role": "system", "content": system_prompt},
+        {"role": "user", "content": obs},
+    ]
+    prompt_ids = tokenizer.apply_chat_template(chat_messages, tokenize=True, add_generation_prompt=True)
 
-        # Pre-compute ChatML turn boundary tokens for obs wrapping.
-        # Model output already ends with <|im_end|> (no_stop_trim=True),
-        # so _turn_pre starts with \n (not <|im_end|>).
-        _turn_pre = tokenizer.encode("\n<|im_start|>user\n", add_special_tokens=False)
-        _turn_post = tokenizer.encode("<|im_end|>\n<|im_start|>assistant\n", add_special_tokens=False)
+    # Pre-compute ChatML turn boundary tokens for obs wrapping.
+    # Model output already ends with <|im_end|> (no_stop_trim=True),
+    # so _turn_pre starts with \n (not <|im_end|>).
+    _turn_pre = tokenizer.encode("\n<|im_start|>user\n", add_special_tokens=False)
+    _turn_post = tokenizer.encode("<|im_end|>\n<|im_start|>assistant\n", add_special_tokens=False)
 
-        # Token-level accumulators (TITO: no retokenization)
-        all_token_ids: list[int] = list(prompt_ids)
-        response_token_ids: list[int] = []
-        loss_mask: list[int] = []
-        rollout_log_probs: list[float] = []
+    # Token-level accumulators (TITO: no retokenization)
+    all_token_ids: list[int] = list(prompt_ids)
+    response_token_ids: list[int] = []
+    loss_mask: list[int] = []
+    rollout_log_probs: list[float] = []
 
-        # --- Compute token budget ---
-        budget = args.rollout_max_context_len - len(prompt_ids)
+    # --- Compute token budget ---
+    budget = args.rollout_max_context_len - len(prompt_ids)
 
-        for turn_idx in range(max_turns):
-            # --- Model generates action ---
-            cur_params = sampling_params.copy()
-            cur_params["max_new_tokens"] = budget
+    for turn_idx in range(max_turns):
+        # --- Model generates action ---
+        cur_params = sampling_params.copy()
+        cur_params["max_new_tokens"] = budget
 
-            payload = {"input_ids": all_token_ids, "sampling_params": cur_params, "return_logprob": True}
+        payload = {"input_ids": all_token_ids, "sampling_params": cur_params, "return_logprob": True}
+        try:
             output = await post(url, payload)
+        except Exception as e:
+            sample.status = Sample.Status.TRUNCATED
+            logger.warning(f"ERROR During Generation: {type(e).__name__}: {e}")
+            break
 
-            # --- Extract tokens & logprobs (TITO) ---
-            raw_logprobs = output["meta_info"]["output_token_logprobs"]
-            new_token_ids = [item[1] for item in raw_logprobs]
-            new_log_probs = [item[0] for item in raw_logprobs]
+        # --- Extract tokens & logprobs (TITO) ---
+        raw_logprobs = output["meta_info"]["output_token_logprobs"]
+        new_token_ids = [item[1] for item in raw_logprobs]
+        new_log_probs = [item[0] for item in raw_logprobs]
 
-            resp_text = output["text"]
+        resp_text = output["text"]
 
-            # Accumulate model output (loss_mask=1)
-            all_token_ids.extend(new_token_ids)
-            response_token_ids.extend(new_token_ids)
-            loss_mask.extend([1] * len(new_token_ids))
-            rollout_log_probs.extend(new_log_probs)
+        # Accumulate model output (loss_mask=1)
+        all_token_ids.extend(new_token_ids)
+        response_token_ids.extend(new_token_ids)
+        loss_mask.extend([1] * len(new_token_ids))
+        rollout_log_probs.extend(new_log_probs)
 
-            budget -= len(new_token_ids)
+        budget -= len(new_token_ids)
 
-            # --- Parse action ---
-            parsed = tool_parser(resp_text)
-            if parsed is None:
-                sample.status = Sample.Status.ABORTED
+        # --- Parse action ---
+        parsed = tool_parser(resp_text)
+        if parsed is None:
+            sample.status = Sample.Status.ABORTED
+            break
+
+        if parsed.type == "subagent":
+            trajectory = tokenizer.decode(response_token_ids, skip_special_tokens=False)
+            obs, reward, done, sub_sample = await subagent_generate(
+                args=args,
+                parent_sample=sample,
+                task=parsed.content,
+                trajectory=trajectory,
+                env=env,
+                tokenizer=tokenizer,
+                url=url,
+                sampling_params=sampling_params,
+                config=config,
+            )
+            subagent_samples.append(sub_sample)
+            cumulative_reward += reward
+            step_rewards.append(reward)
+
+            if done:
+                sample.status = Sample.Status.COMPLETED
                 break
-
-            if parsed.type == "subagent":
-                trajectory = tokenizer.decode(response_token_ids, skip_special_tokens=False)
-                obs, reward, done, sub_sample = await subagent_generate(
-                    args=args,
-                    parent_sample=sample,
-                    task=parsed.content,
-                    trajectory=trajectory,
-                    env=env,
-                    tokenizer=tokenizer,
-                    url=url,
-                    sampling_params=sampling_params,
-                    config=config,
-                )
-                subagent_samples.append(sub_sample)
-                cumulative_reward += reward
-                step_rewards.append(reward)
-
-                if done:
-                    sample.status = Sample.Status.COMPLETED
-                    break
-            elif parsed.type == "action":
+        elif parsed.type == "action":
+            try:
                 obs, reward, done, info = await env.step(parsed.content)
                 cumulative_reward += reward
                 step_rewards.append(reward)
-
-                if done:
-                    sample.status = Sample.Status.COMPLETED
-                    break
-            else:
-                sample.status = Sample.Status.ABORTED
-                break
-
-            if budget <= 0:
+            except Exception as e:
                 sample.status = Sample.Status.TRUNCATED
+                logger.warning(f"ERROR During Env: {type(e).__name__}: {e}")
                 break
 
-            # --- Wrap observation in ChatML user turn (loss_mask=0) ---
-            obs_ids = tokenizer.encode(obs, add_special_tokens=False)
-            turn_ids = _turn_pre + obs_ids + _turn_post
-            all_token_ids.extend(turn_ids)
-            response_token_ids.extend(turn_ids)
-            loss_mask.extend([0] * len(turn_ids))
-            rollout_log_probs.extend([0.0] * len(turn_ids))
-
-            budget -= len(turn_ids)
-            if budget <= 0:
-                sample.status = Sample.Status.TRUNCATED
+            if done:
+                sample.status = Sample.Status.COMPLETED
                 break
-            num_turns = turn_idx + 1
         else:
-            # for-loop exhausted max_turns without break
+            sample.status = Sample.Status.ABORTED
+            break
+
+        if budget <= 0:
             sample.status = Sample.Status.TRUNCATED
+            break
 
-        # --- Finalize main sample ---
-        sample.reward = cumulative_reward
-        sample.metadata["gym_num_turns"] = num_turns
-        sample.metadata["gym_step_rewards"] = step_rewards
-        main_sample = _finalize(sample, tokenizer, all_token_ids,
-                                response_token_ids, loss_mask, rollout_log_probs)
-        if evaluation:
-            return main_sample
-        all_samples = [main_sample] + subagent_samples
-        all_samples = _post_process(samples=all_samples, reward_strategy="simple")
-        return all_samples
+        # --- Wrap observation in ChatML user turn (loss_mask=0) ---
+        obs_ids = tokenizer.encode(obs, add_special_tokens=False)
+        turn_ids = _turn_pre + obs_ids + _turn_post
+        all_token_ids.extend(turn_ids)
+        response_token_ids.extend(turn_ids)
+        loss_mask.extend([0] * len(turn_ids))
+        rollout_log_probs.extend([0.0] * len(turn_ids))
 
-    except Exception as e:
-        logger.exception("Error during rollout")
-        sample.status = Sample.Status.DROP
-        sample.metadata["error"] = str(e)
-        sample.reward = 0.0
-        return [sample]
+        budget -= len(turn_ids)
+        if budget <= 0:
+            sample.status = Sample.Status.TRUNCATED
+            break
+        num_turns = turn_idx + 1
 
-    finally:
-        await env.close()
-
+    await env.close()
+    # --- Finalize main sample ---
+    sample.reward = cumulative_reward
+    sample.metadata["gym_num_turns"] = num_turns
+    sample.metadata["gym_step_rewards"] = step_rewards
+    main_sample = _finalize(sample, tokenizer, all_token_ids,
+                            response_token_ids, loss_mask, rollout_log_probs)
+    if evaluation:
+        return main_sample
+    all_samples = [main_sample] + subagent_samples
+    all_samples = _post_process(samples=all_samples, reward_strategy="simple")
+    return all_samples
 
 async def subagent_generate(
     *,
