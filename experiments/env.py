@@ -25,7 +25,6 @@ class GymEnv:
         self.env_name = env_name
         self.address = address.rstrip("/")
         self.env_id = self._create()
-        self._client = httpx.AsyncClient(timeout=httpx.Timeout(None))
 
     def _create(self) -> str:
         response = requests.post(f"{self.address}/create")
@@ -36,23 +35,25 @@ class GymEnv:
     async def reset(self, task_id: int) -> tuple[str, dict]:
         self.task_id = task_id
         payload = {"env_id": self.env_id, "task_id": self.task_id}
-        response = await self._client.post(f"{self.address}/reset", json=payload)
-        response.raise_for_status()
-        data = response.json()
+        async with httpx.AsyncClient(timeout=httpx.Timeout(None)) as client:
+            response = await client.post(f"{self.address}/reset", json=payload)
+            response.raise_for_status()
+            data = response.json()
         return data["observation"], data["info"]
 
     async def step(self, action: str) -> tuple[str, float, bool, dict]:
         payload = {"env_id": self.env_id, "action": action}
-        response = await self._client.post(f"{self.address}/step", json=payload)
-        response.raise_for_status()
-        data = response.json()
+        async with httpx.AsyncClient(timeout=httpx.Timeout(None)) as client:
+            response = await client.post(f"{self.address}/step", json=payload)
+            response.raise_for_status()
+            data = response.json()
         return data["observation"], data["reward"], data["done"], data["info"]
 
     async def close(self) -> None:
         payload = {"env_id": self.env_id}
-        response = await self._client.post(f"{self.address}/close", json=payload)
-        response.raise_for_status()
-        await self._client.aclose()
+        async with httpx.AsyncClient(timeout=httpx.Timeout(None)) as client:
+            response = await client.post(f"{self.address}/close", json=payload)
+            response.raise_for_status()
 
 if __name__ == "__main__":
     import asyncio
