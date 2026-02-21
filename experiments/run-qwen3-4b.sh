@@ -13,6 +13,7 @@ pkill -9 python
 set -ex
 
 export WANDB_MODE=offline
+export NCCL_NVLS_ENABLE=0
 ENV=${ENV:-"alfworld"}
 
 # will prevent ray from buffering stdout/stderr
@@ -108,7 +109,7 @@ LOGGING_ARGS=(
     # --wandb-key "${WANDB_API_KEY}"
     --use-tensorboard
     --tb-project-name slime-option
-    --tb-experiment-name qwen3-4B-0216
+    --tb-experiment-name "${ENV}-qwen3-4b-inst-0220"
 )
 
 SGLANG_ARGS=(
@@ -142,7 +143,7 @@ RUNTIME_ENV_JSON="{
   \"env_vars\": {
     \"PYTHONPATH\": \"/root/Megatron-LM/\",
     \"CUDA_DEVICE_MAX_CONNECTIONS\": \"1\",
-    \"NCCL_NVLS_ENABLE\": \"${HAS_NVLINK}\"
+    \"NCCL_NVLS_ENABLE\": \"0\"
   }
 }"
 
