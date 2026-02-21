@@ -12,6 +12,8 @@ pkill -9 python
 
 set -ex
 
+# Timestamp: YYYYMMDD-HHMM
+TS="$(date '+%Y%m%d-%H%M')"
 export WANDB_MODE=offline
 export NCCL_NVLS_ENABLE=0
 ENV=${ENV:-"alfworld"}
@@ -105,11 +107,11 @@ OPTIMIZER_ARGS=(
 LOGGING_ARGS=(
     --use-wandb
     --wandb-project slime-option
-    --wandb-group qwen3-4B-0216
+    --wandb-group "${TS}-${ENV}-qwen3-4b-inst"
     # --wandb-key "${WANDB_API_KEY}"
     --use-tensorboard
     --tb-project-name slime-option
-    --tb-experiment-name "${ENV}-qwen3-4b-inst-0220"
+    --tb-experiment-name "${TS}-${ENV}-qwen3-4b-inst"
 )
 
 SGLANG_ARGS=(
