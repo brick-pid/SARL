@@ -134,6 +134,8 @@ MISC_ARGS=(
 CUSTOM_ARGS=(
    --custom-generate-function-path experiments.generate.generate
    --custom-config-path "${REPO_DIR}/experiments/config.yaml"
+   --custom-rollout-log-function-path experiments.utils.log_rollout_data
+   --custom-eval-rollout-log-function-path experiments.utils.log_eval_rollout_data
 )
 
 # launch the master node of ray in container
