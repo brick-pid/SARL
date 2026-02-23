@@ -40,7 +40,7 @@ CKPT_ARGS=(
    --load "${REPO_DIR}/models/qwen3-4b-inst-2507-torch-dist" # 加载训练权重
    --ref-load "${REPO_DIR}/models/qwen3-4b-inst-2507-torch-dist"
    --save "${REPO_DIR}/experiments/checkpoints"
-   --save-interval 20
+   --save-interval 50
 )
 
 ROLLOUT_ARGS=(
@@ -49,12 +49,12 @@ ROLLOUT_ARGS=(
    --metadata-key metadata
    --rollout-shuffle
    --num-rollout 3000
-   --rollout-batch-size 32
+   --rollout-batch-size 16
    --n-samples-per-prompt 8
    --rollout-max-context-len 32768
-   --rollout-max-response-len 8192
+   --rollout-max-response-len 1024
    --rollout-temperature 1
-   --global-batch-size 256
+   --global-batch-size 128
    --balance-data
    --sglang-server-concurrency 32
    # --debug-rollout-only
@@ -64,7 +64,7 @@ EVAL_ARGS=(
    --eval-interval 10
    --eval-prompt-data "${ENV}" "${REPO_DIR}/data/agentgym/test/${ENV}_test.jsonl"
 #    --n-samples-per-eval-prompt 16
-   --eval-max-response-len 16384
+   --eval-max-response-len 1024
    --eval-top-p 1
 )
 
@@ -72,7 +72,7 @@ PERF_ARGS=(
    --tensor-model-parallel-size 2
    --sequence-parallel
    --pipeline-model-parallel-size 1
-   --context-parallel-size 1
+   --context-parallel-size 2
    --expert-model-parallel-size 1
    --expert-tensor-parallel-size 1
 
@@ -82,7 +82,7 @@ PERF_ARGS=(
 
    # --micro-batch-size 1
    --use-dynamic-batch-size
-   --max-tokens-per-gpu 9216
+   --max-tokens-per-gpu 16384
 )
 
 GRPO_ARGS=(
@@ -140,7 +140,7 @@ CUSTOM_ARGS=(
 
 # launch the master node of ray in container
 export MASTER_ADDR=${MASTER_ADDR:-"127.0.0.1"}
-ray start --head --node-ip-address ${MASTER_ADDR} --num-gpus 8 --disable-usage-stats --dashboard-host=0.0.0.0 --dashboard-port=8265
+ray start --head --node-ip-address ${MASTER_ADDR} --num-gpus 4 --disable-usage-stats --dashboard-host=0.0.0.0 --dashboard-port=8265
 
 # Build the runtime environment JSON with proper variable substitution
 RUNTIME_ENV_JSON="{
@@ -155,7 +155,7 @@ ray job submit --address="http://127.0.0.1:8265" \
    --runtime-env-json="${RUNTIME_ENV_JSON}" \
    -- python3 train.py \
    --actor-num-nodes 1 \
-   --actor-num-gpus-per-node 8 \
+   --actor-num-gpus-per-node 4 \
    --colocate \
    ${MODEL_ARGS[@]} \
    ${CKPT_ARGS[@]} \
