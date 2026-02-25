@@ -129,9 +129,10 @@ async def generate(args: Any, sample: Sample, sampling_params: dict, evaluation:
             reward, done, info = 0.0, False, {}
             step_rewards.append(reward)
         elif parsed.type == "subagent":
-            breakpoint()
-            obs, reward, done, sub_sample = await subagent_generate(args=args, parent_sample=sample, task=task, subtask=parsed.content,
-                env=env, tokenizer=tokenizer, url=url, sampling_params=sampling_params, config=config)
+            obs, reward, done, sub_sample = await subagent_generate(args=args, parent_sample=sample, task=task, subtask=parsed.content, 
+                                                                    action_list=action_list, obs_list=obs_list, 
+                                                                    env=env, tokenizer=tokenizer, url=url, 
+                                                                    sampling_params=sampling_params, config=config)
             subagent_samples.append(sub_sample)
             cumulative_reward += reward
             step_rewards.append(reward)
@@ -169,8 +170,6 @@ async def generate(args: Any, sample: Sample, sampling_params: dict, evaluation:
     logger.info(f"#### reward: {sample.reward}, done: {sample.status}, turn: {num_turns}, token budget: {budget}")
     sample.metadata["num_turns"] = num_turns
     sample.metadata["step_rewards"] = step_rewards
-    sample.metadata["action_list"] = action_list
-    sample.metadata["obs_list"] = obs_list
     main_sample = _finalize(sample, tokenizer, all_token_ids,
                             response_token_ids, loss_mask, rollout_log_probs)
     if evaluation:
@@ -179,7 +178,8 @@ async def generate(args: Any, sample: Sample, sampling_params: dict, evaluation:
     all_samples = _post_process(samples=all_samples, reward_strategy="simple")
     return all_samples
 
-async def subagent_generate(args: Any, parent_sample: Sample, subtask: str, env: GymEnv, tokenizer, url: str, sampling_params: dict, config: dict) -> tuple[str, float, bool, Sample]:
+async def subagent_generate(args: Any, parent_sample: Sample, task: str, subtask: str, action_list: List[str], obs_list: List[str], 
+                            env: GymEnv, tokenizer, url: str, sampling_params: dict, config: dict) -> tuple[str, float, bool, Sample]:
     """
     Spawn a subagent that runs a shorter agent loop on the same env.
     The subagent will train with the main agent.
@@ -191,8 +191,7 @@ async def subagent_generate(args: Any, parent_sample: Sample, subtask: str, env:
         sample: subagent sample with full TITO data for training
     """
     sub_max_turns = config["subagent_max_turns"]
-    task = parent_sample.metadata["task"]
-    user_prompt = build_subagent_user_prompt(task=task, subtask=subtask, sample=parent_sample)
+    user_prompt = build_subagent_user_prompt(task=task, subtask=subtask, action_list=action_list, obs_list=obs_list)
     sub_messages = [
         {"role": "system", "content": subagent_system_prompt},
         {"role": "user", "content": user_prompt},
@@ -219,7 +218,6 @@ async def subagent_generate(args: Any, parent_sample: Sample, subtask: str, env:
     cumulative_reward = 0.0
     done = False
 
-    breakpoint()
     for turn_idx in range(sub_max_turns):
         cur_params = sampling_params.copy()
         cur_params["max_new_tokens"] = budget
@@ -315,9 +313,7 @@ def _finalize(
         sample.status = Sample.Status.COMPLETED
     return sample
 
-def build_subagent_user_prompt(task, subtask, sample):
-    action_list = sample.metadata["action_list"]
-    obs_list = sample.metadata["obs_list"]
+def build_subagent_user_prompt(task, subtask, action_list, obs_list):
     history_str = "".join(f"Action: {a}\nObservation: {o}\n" for a, o in zip(action_list, obs_list))
     prompt = f"""# Input Context\n## Task\n{task}\n## Subtask\n{subtask}\n## Main Agent History\n{history_str}""".strip()
     return prompt

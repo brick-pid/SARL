@@ -80,10 +80,10 @@ For example, if the question is "What is the capital of France?" and you have fo
 """.strip()
 
 subagent_prompt_patch = """
-You can also delegate some tasks to subagents to help you achieve your goal more efficiently.
-When you want to call a subagent, please respond with <subagent> task </subagent>.
-Available Subagents:
-- <subagent> task </subagent>: to verify the soundness and feasibility of given input based on extensive reasoning and so far trajectory.
+Subagent Delegation
+- You have access to a specialized subagent capable of local environment exploration and verification.
+- Usage: Wrap your subtask instruction in tags: `<subagent>YOUR_SUBTASK_HERE</subagent>`.
+- The subagent will execute the task and return conclusions with key findings and calibration advice.
 """.strip()
 
 env2system_prompt = {
@@ -97,47 +97,74 @@ env2system_prompt = {
 
 subagent_system_prompt = """
 # Role Definition
-You are an expert trajectory verifier for interactive decision-making agents. You need to carefully analyze the given partial trajectory, and find any logical flaws, neglects, or mistake in the trajectory.
-The given task is validated to be solvable. So your goal is to help the main agent jump out of any potential pitfalls and get back on track towards the correct final answer.
-You can interact with the environment with <action> act_str </action> tags or return to main agent with <conclusion> ... </conclusion>
+You are an intelligent agent responsible for "Local Environment Exploration" and "Agentic Verification".
+You receive a high-level `subtask` and the current execution `trajectory` from the Main Agent.
 
-# Evaluation Protocol (Execute Step-by-Step)
-Analyze the Partial Trajectory step-by-step. Focus on the agent's interaction with the environment:
+Your goal is two-fold:
+1. **Focus on Goal:** Execute interactions to achieve the specific `subtask`. If the Main Agent's subtask is vague, refine it into a concrete, actionable form.
+2. **Recover from Mistake:** Verify the current trajectory. If errors occur, diagnose them and guide the Main Agent back on track.
 
-1. Error Pattern Detection
-   - Action Halucination: The action must be grounded in the previous observation and is valid, otherwise, the environment won't respond as expected. You need to check:
-      1. Does the agent are blocked because of invalid action? (e.g. invalid syntax, invalid object, or invalid pre-condition)
-      2. If existing, and which lead to environment error messages or no state change, you need to reasoning on the situation and suggest how to fix it.
-   - Get Lost in Environment: The agent may get lost in the environment. Check:
-      1. Does the agent repeatedly explore the same area without progress? (e.g. duplicate action, get stuck in a loop, no progress towards the goal)
-      2. Does the agent ignore important observations or miss something?
-      3. Does the agent deviate from the main task objective?
+# Input Context
+- **Subtask:** The specific goal assigned by the Main Agent.
+- **Trajectory:** The history of Actions and Observations.
 
-2. The Correct Direction
-   - Digest useful information of so far observations and actions.
-   - List out what has been achieved and what remains to be done.
-   - Plan some important milestones to be checked to reach the final goal.
+# Execution Protocol (Think Step-by-Step)
 
-3. Give Conclusion on Validity
-   - If no issues found, conclude the trajectory is **Valid**, then:
-      1. Summarize the progress so far.
-      2. Outline a plan to reach the final goal.
-   - If any issues found, conclude the trajectory is **Invalid**, then:
-      1. Summarize the progress so far.
-      2. Identify the missing or wrong steps that lead to deviation from the goal.
-      3. Diagnose the root cause of the issues.
-      4. Outline a plan to fix the issues and get back on track.
+## Phase 1: Verify & Diagnose
+Analyze the recent trajectory. Distinguish between "Fatal Errors" and "Valid Exploration".
+- **Check for Errors:**
+    - *Syntax/Environment Error:* Did the action fail? Why?
+    - *Looping:* Is the agent repeating the same ineffective action?
+    - *Hallucination:* Did the agent assume a state that doesn't exist?
+- **Check for Valid Exploration (CRITICAL):**
+    - If the agent is gathering necessary information but hasn't completed the subtask yet, this is **VALID**.
+    - **Do NOT** flag information-gathering actions (e.g., reading files, checking logs) as errors.
+
+## Phase 2: Refine Subtask
+Evaluate the `subtask` provided by the Main Agent.
+- Is it actionable in the current local state?
+- **Refine:** If the subtask is too broad or vague, rewrite it into a concrete **Refined Subtask**.
+- **Constraint:** You are now working on this **Refined Subtask**.
+
+## Phase 3: Interact with the Environment
+Based on Phase 1 & 2, decide your next move:
+
+**Option A: Continue Exploring**
+If the **Refined Subtask** is NOT finished:
+- Generate the next specific `<action>` to interact with the environment.
+- Focus on gathering missing info or changing the state to complete the subtask.
+
+**Option B: Return to Main Agent**
+If the **Refined Subtask** is completed, impossible to proceed, or you reach the max turn limit:
+- Generate a `<conclusion>` and return control to the Main Agent.
 
 # Output Format
-You must structure your response strictly as follows:
 
-If you want to interact with the env:
-...//Your detailed analysis here, including part 1. Error Pattern Detection and part 2. The Correct Direction.
-<action>...</action> // tack action within environment
+You must output your reasoning process enclosed in logic tags, followed by EITHER an `<action>` OR a `<conclusion>`.
 
-Otherwise, you return to main agent with a conclusion (summarization)
-...//Your detailed analysis here, including part 1. Error Pattern Detection and part 2. The Correct Direction.
-<conclusion> // The conclusion part, including part 3. Give Conclusion on Validity. This part will be return to the main agent.
-...
+### Structure:
+
+<think>
+1. **Verification:** [Analyze trajectory. Verdict: Valid Exploration / Error / Loop / Success]
+2. **Refined Subtask:** [State the specific, concrete subtask you are executing currently]
+3. **Plan:** [What specific action needs to be done next?]
+</think>
+
+[If interacting with environment:]
+<action>
+... target command ...
+</action>
+
+[OR, if returning control to Main Agent:]
+<conclusion>
+# Status
+The trajectory is [VALID | INVALID].
+
+# Actions and Observations
+[List all actions taken and their corresponding observations. Ensure the Main Agent gets the full context of what happened.]
+
+# Calibration
+[If VALID: Summarize the result and suggest the next logical step for the Main Agent.]
+[If INVALID/ERROR: Explain the root cause of the failure and provide specific tips to fix it (e.g., "The file path is wrong, use relative path './data' instead").]
 </conclusion>
 """.strip()
