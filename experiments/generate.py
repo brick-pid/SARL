@@ -69,6 +69,7 @@ async def generate(args: Any, sample: Sample, sampling_params: dict, evaluation:
     # --- Environment Init ---
     env = GymEnv(env_name=data_source, address=env_address)
     obs, info = await env.reset(task_id=task_id)
+    done = False
 
     # --- Build prompt: system + obs as user turn ---
     system_prompt = env2system_prompt[data_source]
@@ -101,12 +102,7 @@ async def generate(args: Any, sample: Sample, sampling_params: dict, evaluation:
         cur_params["max_new_tokens"] = budget
 
         payload = {"input_ids": all_token_ids, "sampling_params": cur_params, "return_logprob": True}
-        try:
-            output = await post(url, payload)
-        except Exception as e:
-            sample.status = Sample.Status.TRUNCATED
-            logger.warning(f"ERROR During Generation: {type(e).__name__}: {e}")
-            break
+        output = await post(url, payload)
 
         # --- Extract tokens & logprobs (TITO) ---
         raw_logprobs = output["meta_info"]["output_token_logprobs"]
@@ -126,10 +122,10 @@ async def generate(args: Any, sample: Sample, sampling_params: dict, evaluation:
         # --- Parse action ---
         parsed = tool_parser(resp_text)
         if parsed is None:
-            sample.status = Sample.Status.ABORTED
-            break
-
-        if parsed.type == "subagent":
+            obs = "The task is not completed yet, you need to take an action in current environment."
+            reward, done, info = 0.0, False, {}
+            step_rewards.append(reward)
+        elif parsed.type == "subagent":
             trajectory = tokenizer.decode(response_token_ids, skip_special_tokens=False)
             obs, reward, done, sub_sample = await subagent_generate(
                 args=args,
@@ -145,30 +141,12 @@ async def generate(args: Any, sample: Sample, sampling_params: dict, evaluation:
             subagent_samples.append(sub_sample)
             cumulative_reward += reward
             step_rewards.append(reward)
-
-            if done:
-                sample.status = Sample.Status.COMPLETED
-                break
         elif parsed.type == "action":
-            try:
-                obs, reward, done, info = await env.step(parsed.content)
-                cumulative_reward += reward
-                step_rewards.append(reward)
-            except Exception as e:
-                sample.status = Sample.Status.TRUNCATED
-                logger.warning(f"ERROR During Env: {type(e).__name__}: {e}")
-                break
-
-            if done:
-                sample.status = Sample.Status.COMPLETED
-                break
+            obs, reward, done, info = await env.step(parsed.content)
+            cumulative_reward += reward
+            step_rewards.append(reward)
         else:
-            sample.status = Sample.Status.ABORTED
-            break
-
-        if budget <= 0:
-            sample.status = Sample.Status.TRUNCATED
-            break
+            raise ValueError(f"Unrecognized tool response type: {parsed.type}")
 
         # --- Wrap observation in ChatML user turn (loss_mask=0) ---
         obs_ids = tokenizer.encode(obs, add_special_tokens=False)
@@ -177,18 +155,24 @@ async def generate(args: Any, sample: Sample, sampling_params: dict, evaluation:
         response_token_ids.extend(turn_ids)
         loss_mask.extend([0] * len(turn_ids))
         rollout_log_probs.extend([0.0] * len(turn_ids))
+        num_turns = turn_idx + 1
 
         budget -= len(turn_ids)
         if budget <= 0:
             sample.status = Sample.Status.TRUNCATED
             break
-        num_turns = turn_idx + 1
+        if done:
+            sample.status = Sample.Status.COMPLETED
+            break
 
     await env.close()
     # --- Finalize main sample ---
+    if env.env_name == "sciworld":
+        cumulative_reward /= 100
     sample.reward = cumulative_reward
-    sample.metadata["gym_num_turns"] = num_turns
-    sample.metadata["gym_step_rewards"] = step_rewards
+    logger.info(f"#### reward: {sample.reward}, done: {sample.status}, turn: {num_turns}, token budget: {budget}")
+    sample.metadata["num_turns"] = num_turns
+    sample.metadata["step_rewards"] = step_rewards
     main_sample = _finalize(sample, tokenizer, all_token_ids,
                             response_token_ids, loss_mask, rollout_log_probs)
     if evaluation:
@@ -197,18 +181,7 @@ async def generate(args: Any, sample: Sample, sampling_params: dict, evaluation:
     all_samples = _post_process(samples=all_samples, reward_strategy="simple")
     return all_samples
 
-async def subagent_generate(
-    *,
-    args: Any,
-    parent_sample: Sample,
-    task: str,
-    trajectory: str,
-    env: GymEnv,
-    tokenizer,
-    url: str,
-    sampling_params: dict,
-    config: dict,
-) -> tuple[str, float, bool, Sample]:
+async def subagent_generate(args: Any, parent_sample: Sample, task: str, trajectory: str, env: GymEnv, tokenizer, url: str, sampling_params: dict, config: dict) -> tuple[str, float, bool, Sample]:
     """
     Spawn a subagent that runs a shorter agent loop on the same env.
     The subagent will train with the main agent.
@@ -292,7 +265,6 @@ async def subagent_generate(
             sub_sample.status = Sample.Status.COMPLETED
             break
         else:
-            # subagent should not emit <subagent> (no recursion)
             sub_sample.status = Sample.Status.ABORTED
             break
 
@@ -314,9 +286,6 @@ async def subagent_generate(
             conclusion = obs
             sub_sample.status = Sample.Status.TRUNCATED
             break
-    else:
-        # for-loop exhausted sub_max_turns without break
-        sub_sample.status = Sample.Status.TRUNCATED
 
     sub_sample.reward = cumulative_reward
     finalized = _finalize(sub_sample, tokenizer, all_token_ids,
@@ -344,25 +313,19 @@ def _post_process(samples: List[Sample], reward_strategy: str = "simple"):
     
 
 def _finalize(
-    sample: Sample,
-    tokenizer,
-    all_token_ids: list[int],
-    response_token_ids: list[int],
-    loss_mask: list[int],
-    rollout_log_probs: list[float],
-) -> Sample:
+    sample: Sample, tokenizer, all_token_ids: list[int], response_token_ids: list[int], loss_mask: list[int], rollout_log_probs: list[float]) -> Sample:
     """Pack token-level tracking data into the Sample."""
+    # alignment checks
+    assert len(loss_mask) == len(response_token_ids), f"loss_mask length {len(loss_mask)} != response_token_ids length {len(response_token_ids)}"
+    assert len(rollout_log_probs) == len(response_token_ids), f"rollout_log_probs length {len(rollout_log_probs)} != response_token_ids length {len(response_token_ids)}"
+
     sample.tokens = all_token_ids
+    sample.response_length = len(response_token_ids)
     sample.loss_mask = loss_mask
     sample.rollout_log_probs = rollout_log_probs
-    sample.response_length = len(response_token_ids)
 
-    # Decode only model-generated tokens for sample.response
-    model_token_ids = [
-        tid for tid, mask in zip(response_token_ids, loss_mask) if mask
-    ]
-    sample.response = tokenizer.decode(model_token_ids, skip_special_tokens=False)
-
+    # Keep full response text (model + obs/tool/env)
+    sample.response = tokenizer.decode(response_token_ids, skip_special_tokens=False)
     if sample.status is None or sample.status == Sample.Status.PENDING:
         sample.status = Sample.Status.COMPLETED
     return sample
