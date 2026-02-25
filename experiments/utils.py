@@ -7,7 +7,7 @@ support format:
 """
 import re
 from dataclasses import dataclass
-from typing import Sequence
+from collections import defaultdict
 
 
 @dataclass
@@ -33,19 +33,38 @@ def _is_success(value) -> int:
 def log_rollout_data(rollout_id, args, samples, rollout_extra_metrics, rollout_time) -> bool:
     assert rollout_extra_metrics is not None
     success_count = 0
+    subset_count = defaultdict(int)
+    subset_success_count = defaultdict(int)
     for sample in samples:
-        success_count += _is_success(getattr(sample, "reward", None))
+        success = _is_success(sample.reward)
+        success_count += success
+        # subset
+        subset = sample.metadata['subset']
+        subset_count[subset] += 1
+        subset_success_count[subset] += success
 
     rollout_extra_metrics["rollout/success_rate"] = success_count / len(samples)
+    for subset in subset_count:
+        rollout_extra_metrics[f"rollout/{subset}/success_rate"] = subset_success_count[subset] / subset_count[subset]
     return False
 
 
 def log_eval_rollout_data(rollout_id, args, data, extra_metrics) -> bool:
     assert extra_metrics is not None
     for dataset_name, dataset_data in data.items():
-        rewards = dataset_data.get("rewards", [])
+        samples = dataset_data['samples']
         success_count = 0
-        for r in rewards:
-            success_count += _is_success(r)
-        extra_metrics[f"eval/{dataset_name}/success_rate"] = success_count / len(rewards)
+        subset_count = defaultdict(int)
+        subset_success_count = defaultdict(int)
+        for sample in samples:
+            success = _is_success(sample.reward)
+            success_count += success
+            # subset
+            subset = sample.metadata['subset']
+            subset_count[subset] += 1
+            subset_success_count[subset] += success
+
+        extra_metrics[f"eval/{dataset_name}/success_rate"] = success_count / len(samples)    
+        for subset in subset_count:
+            extra_metrics[f"eval/{dataset_name}/{subset}/success_rate"] = subset_success_count[subset] / subset_count[subset]
     return False
