@@ -15,9 +15,8 @@ from slime.utils.types import Sample
 from .env import GymEnv
 from .utils import tool_parser
 from .prompts import (
-    env2system_prompt,
-    subagent_prompt_patch,
-    subagent_system_prompt
+    render_main_system_prompt,
+    render_subagent_system_prompt,
 )
 
 logger = logging.getLogger(__name__)
@@ -70,31 +69,26 @@ async def generate(args: Any, sample: Sample, sampling_params: dict, evaluation:
     env = GymEnv(env_name=data_source, address=env_address)
     obs, info = await env.reset(task_id=task_id)
     done = False
-    action_list = []
-    obs_list = []
     task = obs # use init obs as task description
 
-    # --- Build prompt: system + obs as user turn ---
-    system_prompt = env2system_prompt[data_source]
-    if config.get("enable_subagent", False):
-        system_prompt += "\n\n" + subagent_prompt_patch
-    chat_messages = [
-        {"role": "system", "content": system_prompt},
-        {"role": "user", "content": obs},
-    ]
+    # --- Build prompt/message history state ---
+    system_prompt = render_main_system_prompt(
+        env_name=data_source,
+        task=task,
+        enable_subagent=config.get("enable_subagent", False),
+    )
+    chat_messages = [{"role": "system", "content": system_prompt}]
     prompt_ids = tokenizer.apply_chat_template(chat_messages, tokenize=True, add_generation_prompt=True)
-
-    # Pre-compute ChatML turn boundary tokens for obs wrapping.
     # Model output already ends with <|im_end|> (no_stop_trim=True),
-    # so _turn_pre starts with \n (not <|im_end|>).
+    # so turn_pre starts with "\n" (not <|im_end|>).
     _turn_pre = tokenizer.encode("\n<|im_start|>user\n", add_special_tokens=False)
     _turn_post = tokenizer.encode("<|im_end|>\n<|im_start|>assistant\n", add_special_tokens=False)
 
     # Token-level accumulators (TITO: no retokenization)
-    all_token_ids: list[int] = list(prompt_ids)
+    sample.tokens = list(prompt_ids)
+    sample.loss_mask = []
+    sample.rollout_log_probs = []
     response_token_ids: list[int] = []
-    loss_mask: list[int] = []
-    rollout_log_probs: list[float] = []
 
     # --- Compute token budget ---
     budget = args.rollout_max_context_len - len(prompt_ids)
@@ -104,7 +98,7 @@ async def generate(args: Any, sample: Sample, sampling_params: dict, evaluation:
         cur_params = sampling_params.copy()
         cur_params["max_new_tokens"] = budget
 
-        payload = {"input_ids": all_token_ids, "sampling_params": cur_params, "return_logprob": True}
+        payload = {"input_ids": sample.tokens, "sampling_params": cur_params, "return_logprob": True}
         output = await post(url, payload)
 
         # --- Extract tokens & logprobs (TITO) ---
@@ -115,10 +109,7 @@ async def generate(args: Any, sample: Sample, sampling_params: dict, evaluation:
         resp_text = output["text"]
 
         # Accumulate model output (loss_mask=1)
-        all_token_ids.extend(new_token_ids)
-        response_token_ids.extend(new_token_ids)
-        loss_mask.extend([1] * len(new_token_ids))
-        rollout_log_probs.extend(new_log_probs)
+        _append_to_sample(sample, response_token_ids, new_token_ids, new_log_probs, loss_mask_val=1)
 
         budget -= len(new_token_ids)
 
@@ -129,8 +120,7 @@ async def generate(args: Any, sample: Sample, sampling_params: dict, evaluation:
             reward, done, info = 0.0, False, {}
             step_rewards.append(reward)
         elif parsed.type == "subagent":
-            obs, reward, done, sub_sample = await subagent_generate(args=args, parent_sample=sample, task=task, subtask=parsed.content, 
-                                                                    action_list=action_list, obs_list=obs_list, 
+            obs, reward, done, sub_sample = await subagent_generate(args=args, parent_sample=sample, task=task, subtask=parsed.content,
                                                                     env=env, tokenizer=tokenizer, url=url, 
                                                                     sampling_params=sampling_params, config=config)
             subagent_samples.append(sub_sample)
@@ -142,16 +132,10 @@ async def generate(args: Any, sample: Sample, sampling_params: dict, evaluation:
             step_rewards.append(reward)
         else:
             raise ValueError(f"Unrecognized tool response type: {parsed.type}")
-        if parsed is not None:
-            action_list.append(parsed.content)
-            obs_list.append(obs)
         # --- Wrap observation in ChatML user turn (loss_mask=0) ---
         obs_ids = tokenizer.encode(obs, add_special_tokens=False)
         turn_ids = _turn_pre + obs_ids + _turn_post
-        all_token_ids.extend(turn_ids)
-        response_token_ids.extend(turn_ids)
-        loss_mask.extend([0] * len(turn_ids))
-        rollout_log_probs.extend([0.0] * len(turn_ids))
+        _append_to_sample(sample, response_token_ids, turn_ids, [0.0] * len(turn_ids), loss_mask_val=0)
         num_turns = turn_idx + 1
 
         budget -= len(turn_ids)
@@ -170,15 +154,14 @@ async def generate(args: Any, sample: Sample, sampling_params: dict, evaluation:
     logger.info(f"#### reward: {sample.reward}, done: {sample.status}, turn: {num_turns}, token budget: {budget}")
     sample.metadata["num_turns"] = num_turns
     sample.metadata["step_rewards"] = step_rewards
-    main_sample = _finalize(sample, tokenizer, all_token_ids,
-                            response_token_ids, loss_mask, rollout_log_probs)
+    main_sample = _finalize(sample, tokenizer, response_token_ids)
     if evaluation:
         return main_sample
     all_samples = [main_sample] + subagent_samples
     all_samples = _post_process(samples=all_samples, reward_strategy="simple")
     return all_samples
 
-async def subagent_generate(args: Any, parent_sample: Sample, task: str, subtask: str, action_list: List[str], obs_list: List[str], 
+async def subagent_generate(args: Any, parent_sample: Sample, task: str, subtask: str,
                             env: GymEnv, tokenizer, url: str, sampling_params: dict, config: dict) -> tuple[str, float, bool, Sample]:
     """
     Spawn a subagent that runs a shorter agent loop on the same env.
@@ -191,26 +174,25 @@ async def subagent_generate(args: Any, parent_sample: Sample, task: str, subtask
         sample: subagent sample with full TITO data for training
     """
     sub_max_turns = config["subagent_max_turns"]
-    user_prompt = build_subagent_user_prompt(task=task, subtask=subtask, action_list=action_list, obs_list=obs_list)
-    sub_messages = [
-        {"role": "system", "content": subagent_system_prompt},
-        {"role": "user", "content": user_prompt},
-    ]
+    subagent_system_prompt = render_subagent_system_prompt(
+        env_name=env.env_name,
+        subtask=subtask,
+    )
+    sub_messages = [{"role": "system", "content": subagent_system_prompt}]
 
     sub_sample = deepcopy(parent_sample)
     sub_sample.prompt = sub_messages
     sub_sample.metadata["role"] = "subagent"
 
     prompt_ids = tokenizer.apply_chat_template(sub_messages, tokenize=True, add_generation_prompt=True)
-
     # avoid retokenization drift
     _turn_pre = tokenizer.encode("\n<|im_start|>user\n", add_special_tokens=False)
     _turn_post = tokenizer.encode("<|im_end|>\n<|im_start|>assistant\n", add_special_tokens=False)
 
-    all_token_ids: list[int] = list(prompt_ids)
+    sub_sample.tokens = list(prompt_ids)
+    sub_sample.loss_mask = []
+    sub_sample.rollout_log_probs = []
     response_token_ids: list[int] = []
-    loss_mask: list[int] = []
-    rollout_log_probs: list[float] = []
 
     budget = args.rollout_max_context_len - len(prompt_ids)
 
@@ -222,7 +204,7 @@ async def subagent_generate(args: Any, parent_sample: Sample, task: str, subtask
         cur_params = sampling_params.copy()
         cur_params["max_new_tokens"] = budget
 
-        payload = {"input_ids": all_token_ids, "sampling_params": cur_params, "return_logprob": True}
+        payload = {"input_ids": sub_sample.tokens, "sampling_params": cur_params, "return_logprob": True}
         output = await post(url, payload)
 
         raw_logprobs = output["meta_info"]["output_token_logprobs"]
@@ -232,10 +214,7 @@ async def subagent_generate(args: Any, parent_sample: Sample, task: str, subtask
         resp_text = output["text"]
 
         # Accumulate model output (loss_mask=1)
-        all_token_ids.extend(new_token_ids)
-        response_token_ids.extend(new_token_ids)
-        loss_mask.extend([1] * len(new_token_ids))
-        rollout_log_probs.extend(new_log_probs)
+        _append_to_sample(sub_sample, response_token_ids, new_token_ids, new_log_probs, loss_mask_val=1)
 
         budget -= len(new_token_ids)
 
@@ -256,10 +235,7 @@ async def subagent_generate(args: Any, parent_sample: Sample, task: str, subtask
         # Encode env observation as ChatML user turn (loss_mask=0)
         obs_ids = tokenizer.encode(obs, add_special_tokens=False)
         turn_ids = _turn_pre + obs_ids + _turn_post
-        all_token_ids.extend(turn_ids)
-        response_token_ids.extend(turn_ids)
-        loss_mask.extend([0] * len(turn_ids))
-        rollout_log_probs.extend([0.0] * len(turn_ids))
+        _append_to_sample(sub_sample, response_token_ids, turn_ids, [0.0] * len(turn_ids), loss_mask_val=0)
 
         budget -= len(turn_ids)
         if budget <= 0:
@@ -271,8 +247,7 @@ async def subagent_generate(args: Any, parent_sample: Sample, task: str, subtask
 
     # We don't set reward for subagent here, currently, we use main agent outcome reward as subagent reward signal (reward_strategy="simple").
     # In the future, we can explore more sophisticated reward assignment strategy and set subagent reward here.
-    finalized = _finalize(sub_sample, tokenizer, all_token_ids,
-                          response_token_ids, loss_mask, rollout_log_probs)
+    finalized = _finalize(sub_sample, tokenizer, response_token_ids)
     return obs, cumulative_reward, done, finalized
 
 
@@ -295,25 +270,28 @@ def _post_process(samples: List[Sample], reward_strategy: str = "simple"):
     return samples
     
 
-def _finalize(
-    sample: Sample, tokenizer, all_token_ids: list[int], response_token_ids: list[int], loss_mask: list[int], rollout_log_probs: list[float]) -> Sample:
+def _append_to_sample(
+    sample: Sample,
+    response_tokens: list[int],
+    tokens_to_add: list[int],
+    logprobs: list[float],
+    loss_mask_val: int,
+) -> None:
+    sample.tokens.extend(tokens_to_add)
+    response_tokens.extend(tokens_to_add)
+    sample.loss_mask.extend([loss_mask_val] * len(tokens_to_add))
+    sample.rollout_log_probs.extend(logprobs)
+    sample.response_length = len(response_tokens)
+
+
+def _finalize(sample: Sample, tokenizer, response_token_ids: list[int]) -> Sample:
     """Pack token-level tracking data into the Sample."""
     # alignment checks
-    assert len(loss_mask) == len(response_token_ids), f"loss_mask length {len(loss_mask)} != response_token_ids length {len(response_token_ids)}"
-    assert len(rollout_log_probs) == len(response_token_ids), f"rollout_log_probs length {len(rollout_log_probs)} != response_token_ids length {len(response_token_ids)}"
+    assert len(sample.loss_mask) == len(response_token_ids)
+    assert len(sample.rollout_log_probs) == len(response_token_ids)
 
-    sample.tokens = all_token_ids
     sample.response_length = len(response_token_ids)
-    sample.loss_mask = loss_mask
-    sample.rollout_log_probs = rollout_log_probs
-
-    # Keep full response text (model + obs/tool/env)
     sample.response = tokenizer.decode(response_token_ids, skip_special_tokens=False)
     if sample.status is None or sample.status == Sample.Status.PENDING:
         sample.status = Sample.Status.COMPLETED
     return sample
-
-def build_subagent_user_prompt(task, subtask, action_list, obs_list):
-    history_str = "".join(f"Action: {a}\nObservation: {o}\n" for a, o in zip(action_list, obs_list))
-    prompt = f"""# Input Context\n## Task\n{task}\n## Subtask\n{subtask}\n## Main Agent History\n{history_str}""".strip()
-    return prompt
