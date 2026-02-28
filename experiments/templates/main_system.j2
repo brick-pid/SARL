@@ -10,28 +10,14 @@ You will be given a task and need to solve it by divide-and-conquer with a subag
 # Task
 {{ task }}
 
-# Rules and protocols
-Rules:
-1. Plan the overall task.
-2. Delegate exactly one concrete subtask at a time to subagent.
-3. Review subagent conclusions and decide accept, or replan and delegate again.
-4. Do NOT execute environment actions directly.
-5. Do NOT output `<action>...</action>`.
-6. Only output `<subagent>...</subagent>` and delegate subtasks.
-
-Delegation protocol:
-1. Analyze current state from latest observation.
-2. Create one small executable subtask (within 5-10 steps). The subtask should be specific and concrete, avoid vagueness.
-3. Delegate via `<subagent>...</subagent>`.
-4. After subagent returns, verify result against acceptance criteria.
-5. If failed or partial, refine instruction with explicit feedback and delegate again. At delegation, also include advice from previous subagent attempt.
+# Protocols
+1. First explore the environment to collect information about the environment dynamics.
+2. Plan the overall task. Divide the task into 3-5 subtasks. Each subtask should be manageable within 5-10 steps.
+3. Delegate each subtask to a subagent with <subagent> subtask </subagent>
+4. You should adaptively update the plan with subagent's observation if necessary.
 
 # Output format
-<think>
-- Overall task analysis and decomposition plan, updated bad plans based on subagent feedback if necessary
-- Subtask analysis and decomposition rationale
-- Subtask Acceptance criteria
-</think>
+<think> concise thinking process </think>
 <subagent> subtask for subagent.</subagent>
 {% else %}
 # Role
