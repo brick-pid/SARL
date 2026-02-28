@@ -70,6 +70,7 @@ async def generate(args: Any, sample: Sample, sampling_params: dict, evaluation:
     obs, info = await env.reset(task_id=task_id)
     done = False
     task = obs # use init obs as task description
+    sample.metadata["task_desc"] = task
 
     # --- Build prompt/message history state ---
     system_prompt = render_main_system_prompt(
@@ -116,7 +117,7 @@ async def generate(args: Any, sample: Sample, sampling_params: dict, evaluation:
         # --- Parse action ---
         parsed = tool_parser(resp_text)
         if parsed is None:
-            obs = "The task is not completed yet, you need to take an action in current environment."
+            obs = "The task is not completed yet. Think more carefully about the environment."
             reward, done, info = 0.0, False, {}
             step_rewards.append(reward)
         elif parsed.type == "subagent":
@@ -131,7 +132,8 @@ async def generate(args: Any, sample: Sample, sampling_params: dict, evaluation:
             cumulative_reward += reward
             step_rewards.append(reward)
         else:
-            raise ValueError(f"Unrecognized tool response type: {parsed.type}")
+            # unknown parsed.type
+            break
         # --- Wrap observation in ChatML user turn (loss_mask=0) ---
         obs_ids = tokenizer.encode(obs, add_special_tokens=False)
         turn_ids = _turn_pre + obs_ids + _turn_post
@@ -149,6 +151,8 @@ async def generate(args: Any, sample: Sample, sampling_params: dict, evaluation:
     await env.close()
     # --- Finalize main sample ---
     if env.env_name == "sciworld":
+        if cumulative_reward < 0:
+            cumulative_reward = 0
         cumulative_reward /= 100
     sample.reward = cumulative_reward
     logger.info(f"#### reward: {sample.reward}, done: {sample.status}, turn: {num_turns}, token budget: {budget}")
@@ -156,6 +160,7 @@ async def generate(args: Any, sample: Sample, sampling_params: dict, evaluation:
     sample.metadata["step_rewards"] = step_rewards
     main_sample = _finalize(sample, tokenizer, response_token_ids)
     if evaluation:
+        main_sample.subagent_responses = [s.response for s in subagent_samples]
         return main_sample
     all_samples = [main_sample] + subagent_samples
     all_samples = _post_process(samples=all_samples, reward_strategy="simple")
@@ -199,6 +204,9 @@ async def subagent_generate(args: Any, parent_sample: Sample, task: str, subtask
     obs = ""
     cumulative_reward = 0.0
     done = False
+    
+    action_list = []
+    obs_list = []
 
     for turn_idx in range(sub_max_turns):
         cur_params = sampling_params.copy()
@@ -219,16 +227,16 @@ async def subagent_generate(args: Any, parent_sample: Sample, task: str, subtask
         budget -= len(new_token_ids)
 
         parsed = tool_parser(resp_text)
-        if parsed is None:
-            obs = "The task is not completed yet, you need to take an action in current environment."
-            reward, done, info = 0.0, False, {}
+        if not parsed:
+            obs = "Your response is not valid. Use <action> ... </action> to interact with environment."
+            reward, done, info = 0, False, {}
+        elif parsed.type == "action" and "COMPLETED" in parsed.content:
+            break
         elif parsed.type == "action":
             obs, reward, done, info = await env.step(parsed.content)
             cumulative_reward += reward
-            if turn_idx == sub_max_turns - 2:
-                obs += "\n\nNext turn is your last turn. You have to give the final conclusion in the next turn, and return control to main agent."
-        elif parsed.type == "conclusion":
-            obs = parsed.content
+            action_list.append(parsed.content)
+            obs_list.append(obs)
         else:
             raise ValueError(f"Unrecognized tool response type from subagent: {parsed.type}")
 
@@ -245,6 +253,10 @@ async def subagent_generate(args: Any, parent_sample: Sample, task: str, subtask
             sub_sample.status = Sample.Status.COMPLETED
             break
 
+    obs_str = "Subagent Actions and Observations\n"
+    for i in range(len(action_list)):
+        obs_str += f"{action_list[i]} -> {obs_list[i]}\n"
+    obs = obs_str
     # We don't set reward for subagent here, currently, we use main agent outcome reward as subagent reward signal (reward_strategy="simple").
     # In the future, we can explore more sophisticated reward assignment strategy and set subagent reward here.
     finalized = _finalize(sub_sample, tokenizer, response_token_ids)
