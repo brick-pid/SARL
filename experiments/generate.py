@@ -238,7 +238,8 @@ async def subagent_generate(args: Any, parent_sample: Sample, task: str, subtask
             action_list.append(parsed.content)
             obs_list.append(obs)
         else:
-            raise ValueError(f"Unrecognized tool response type from subagent: {parsed.type}")
+            # raise ValueError(f"Unrecognized tool response type from subagent: {parsed.type}")
+            break
 
         # Encode env observation as ChatML user turn (loss_mask=0)
         obs_ids = tokenizer.encode(obs, add_special_tokens=False)
