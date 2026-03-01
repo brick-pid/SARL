@@ -17,6 +17,9 @@ TS="$(date '+%Y%m%d-%H%M')"
 export WANDB_MODE=offline
 export NCCL_NVLS_ENABLE=0
 ENV=${ENV:-"alfworld"}
+ADV=${ADV:-"grpo"}
+EXP_NAME=${TS}-${ENV}-qwen3-4b-inst-${ADV}${TAG:+-$TAG}
+ENABLE_SUBAGENT=${ENABLE_SUBAGENT:-0}
 
 # will prevent ray from buffering stdout/stderr
 export PYTHONBUFFERED=16
@@ -54,7 +57,8 @@ ROLLOUT_ARGS=(
    --rollout-max-context-len 16384
    --rollout-max-response-len 2048
    --rollout-temperature 1
-   --global-batch-size 256
+   # --global-batch-size 256
+   --use-dynamic-global-batch-size
    --balance-data
    --sglang-server-concurrency 32
    --start-rollout-id 0
@@ -89,7 +93,7 @@ PERF_ARGS=(
 )
 
 GRPO_ARGS=(
-   --advantage-estimator grpo
+   --advantage-estimator "${ADV}"
    --use-kl-loss
    --kl-loss-coef 0.00
    --kl-loss-type low_var_kl
@@ -110,11 +114,11 @@ OPTIMIZER_ARGS=(
 LOGGING_ARGS=(
     --use-wandb
     --wandb-project slime-option
-    --wandb-group "${TS}-${ENV}-qwen3-4b-inst${TAG:+-$TAG}"
+    --wandb-group ${EXP_NAME}
     # --wandb-key "${WANDB_API_KEY}"
     --use-tensorboard
     --tb-project-name slime-option
-    --tb-experiment-name "${TS}-${ENV}-qwen3-4b-inst${TAG:+-$TAG}"
+    --tb-experiment-name ${EXP_NAME}
 )
 
 SGLANG_ARGS=(
@@ -131,7 +135,7 @@ MISC_ARGS=(
    --attention-softmax-in-fp32
    # need to comment this when using model with MLA
    --attention-backend flash
-   --dump-details "${REPO_DIR}/dump"
+   --dump-details "${REPO_DIR}/dump/${EXP_NAME}"
 )
 
 CUSTOM_ARGS=(
@@ -139,7 +143,11 @@ CUSTOM_ARGS=(
    --custom-config-path "${REPO_DIR}/experiments/config.yaml"
    --custom-rollout-log-function-path experiments.utils.log_rollout_data
    --custom-eval-rollout-log-function-path experiments.utils.log_eval_rollout_data
+   --custom-reward-post-process-path experiments.rewards.post_process_rewards_v2
 )
+if [[ "${ENABLE_SUBAGENT}" == "1" ]]; then
+  CUSTOM_ARGS+=(--enable-subagent "${ENABLE_SUBAGENT}")
+fi
 
 # launch the master node of ray in container
 export MASTER_ADDR=${MASTER_ADDR:-"127.0.0.1"}
