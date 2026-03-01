@@ -18,7 +18,7 @@ export WANDB_MODE=offline
 export NCCL_NVLS_ENABLE=0
 ENV=${ENV:-"alfworld"}
 ADV=${ADV:-"grpo"}
-EXP_NAME=${TS}-${ENV}-qwen3-4b-inst-${ADV}${TAG:+-$TAG}
+EXP_NAME=${TS}-${ENV}-qwen3-4b-inst-subagent-${ADV}${TAG:+-$TAG}
 
 # will prevent ray from buffering stdout/stderr
 export PYTHONBUFFERED=16
@@ -139,7 +139,7 @@ MISC_ARGS=(
 
 CUSTOM_ARGS=(
    --custom-generate-function-path experiments.generate.generate
-   --custom-config-path "${REPO_DIR}/experiments/configs/configs.yaml"
+   --custom-config-path "${REPO_DIR}/experiments/configs/configs_subagent.yaml"
    --custom-rollout-log-function-path experiments.utils.log_rollout_data
    --custom-eval-rollout-log-function-path experiments.utils.log_eval_rollout_data
    --custom-reward-post-process-path experiments.rewards.post_process_rewards_v2
