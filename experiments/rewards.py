@@ -7,9 +7,7 @@ def post_process_rewards_v1(args, samples):
     v1: sample-level normalization within each group_index.
     This keeps trajectory-length weight bias.
     """
-    # flatten samples
-    if samples and isinstance(samples[0], list):
-        samples = [s for group in samples for s in group]
+    assert not (samples and isinstance(samples[0], list)), "samples should be flattened before reward post-process"
 
     raw_rewards = [sample.get_reward_value(args) for sample in samples]
     if (
@@ -47,8 +45,7 @@ def post_process_rewards_v2(args, samples):
     to all samples in the trajectory. This removes subagent-count weight bias.
     We assume samples from the same trajectory have the same reward value.
     """
-    if samples and isinstance(samples[0], list):
-        samples = [s for group in samples for s in group]
+    assert not (samples and isinstance(samples[0], list)), "samples should be flattened before reward post-process"
 
     raw_rewards = [sample.get_reward_value(args) for sample in samples]
     if (
