@@ -91,3 +91,47 @@ def post_process_rewards_v2(args, samples):
         return raw_rewards, processed
 
     return raw_rewards, raw_rewards
+
+
+def post_process_rewards_v3(args, samples):
+    """
+    v3: based on v1 sample-level normalization.
+    For each group_index, append one max_reward sample when computing mean/std.
+    """
+    assert not (samples and isinstance(samples[0], list)), "samples should be flattened before reward post-process"
+
+    raw_rewards = [sample.get_reward_value(args) for sample in samples]
+    if (
+        args.advantage_estimator in ["grpo", "gspo", "reinforce_plus_plus_baseline"]
+        and args.rewards_normalization
+    ):
+        # group norm
+        grouped = defaultdict(list)
+        for i, sample in enumerate(samples):
+            assert sample.group_index is not None, "sample.group_index must not be None"
+            grouped[sample.group_index].append(i)
+
+        processed = [0.0] * len(samples)
+
+        for idxs in grouped.values():
+            rewards = torch.tensor([raw_rewards[i] for i in idxs], dtype=torch.float)
+
+            if rewards.numel() == 1:
+                mean = torch.tensor(0.0, dtype=torch.float)
+                std = torch.tensor(1.0, dtype=torch.float)
+            else:
+                max_rewards = torch.tensor([1.0], dtype=torch.float)
+                stats_rewards = torch.cat([rewards, max_rewards], dim=0)
+                mean = stats_rewards.mean()
+                std = stats_rewards.std()
+
+            rewards = rewards - mean
+            if args.advantage_estimator in ["grpo", "gspo"] and args.grpo_std_normalization:
+                rewards = rewards / (std + 1e-6)
+
+            for i, v in zip(idxs, rewards.tolist(), strict=True):
+                processed[i] = v
+
+        return raw_rewards, processed
+
+    return raw_rewards, raw_rewards
