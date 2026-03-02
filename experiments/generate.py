@@ -44,7 +44,7 @@ async def generate(args: Any, sample: Sample, sampling_params: dict, evaluation:
     Returns list[Sample]: [main_sample, *subagent_samples].
     """
     config = getattr(args, "custom_config")
-    max_turns = config["max_env_turns"]
+    max_turn = int(config["max_env_turns"])
     env_addresses = config["env_addresses"]
 
     state = GenerateState(args)
@@ -57,8 +57,6 @@ async def generate(args: Any, sample: Sample, sampling_params: dict, evaluation:
     env_address = env_addresses[data_source]
 
     cumulative_reward = 0.0
-    step_rewards: list[float] = []
-    num_turns = 0
     sampling_params = sampling_params.copy()
     sampling_params["no_stop_trim"] = True  # ChatML wrapping requires <|im_end|> in output
     sample.metadata["role"] = "mainagent"
@@ -94,7 +92,8 @@ async def generate(args: Any, sample: Sample, sampling_params: dict, evaluation:
     # --- Compute token budget ---
     budget = args.rollout_max_context_len - len(prompt_ids)
 
-    for turn_idx in range(max_turns):
+    turn = 0
+    while True:
         # --- Model generates action ---
         cur_params = sampling_params.copy()
         cur_params["max_new_tokens"] = budget
@@ -119,18 +118,18 @@ async def generate(args: Any, sample: Sample, sampling_params: dict, evaluation:
         if parsed is None:
             obs = "The task is not completed yet. Think more carefully about the environment."
             reward, done, info = 0.0, False, {}
-            step_rewards.append(reward)
+            turn += 1 # avoid infinite loop if turn is not incremented
         elif parsed.type == "subagent":
-            obs, reward, done, sub_sample = await subagent_generate(args=args, parent_sample=sample, task=task, subtask=parsed.content,
+            obs, reward, done, sub_sample, sub_turn = await subagent_generate(args=args, parent_sample=sample, task=task, subtask=parsed.content,
                                                                     env=env, tokenizer=tokenizer, url=url, 
                                                                     sampling_params=sampling_params, config=config)
             subagent_samples.append(sub_sample)
             cumulative_reward += reward
-            step_rewards.append(reward)
+            turn += sub_turn
         elif parsed.type == "action":
             obs, reward, done, info = await env.step(parsed.content)
             cumulative_reward += reward
-            step_rewards.append(reward)
+            turn += 1
         else:
             # unknown parsed.type
             break
@@ -138,13 +137,12 @@ async def generate(args: Any, sample: Sample, sampling_params: dict, evaluation:
         obs_ids = tokenizer.encode(obs, add_special_tokens=False)
         turn_ids = _turn_pre + obs_ids + _turn_post
         _append_to_sample(sample, response_token_ids, turn_ids, [0.0] * len(turn_ids), loss_mask_val=0)
-        num_turns = turn_idx + 1
 
         budget -= len(turn_ids)
         if budget <= 0:
             sample.status = Sample.Status.TRUNCATED
             break
-        if done:
+        if turn >= max_turn or done:
             sample.status = Sample.Status.COMPLETED
             break
 
@@ -155,9 +153,8 @@ async def generate(args: Any, sample: Sample, sampling_params: dict, evaluation:
             cumulative_reward = 0
         cumulative_reward /= 100
     sample.reward = cumulative_reward
-    logger.info(f"#### reward: {sample.reward}, done: {sample.status}, turn: {num_turns}, token budget: {budget}")
-    sample.metadata["num_turns"] = num_turns
-    sample.metadata["step_rewards"] = step_rewards
+    logger.info(f"#### reward: {sample.reward}, done: {sample.status}, turn: {turn}, token budget: {budget}")
+    sample.metadata["turn"] = turn
     main_sample = _finalize(sample, tokenizer, response_token_ids)
     if evaluation:
         main_sample.subagent_responses = [s.response for s in subagent_samples]
@@ -167,7 +164,7 @@ async def generate(args: Any, sample: Sample, sampling_params: dict, evaluation:
     return all_samples
 
 async def subagent_generate(args: Any, parent_sample: Sample, task: str, subtask: str,
-                            env: GymEnv, tokenizer, url: str, sampling_params: dict, config: dict) -> tuple[str, float, bool, Sample]:
+                            env: GymEnv, tokenizer, url: str, sampling_params: dict, config: dict) -> tuple[str, float, bool, Sample, int]:
     """
     Spawn a subagent that runs a shorter agent loop on the same env.
     The subagent will train with the main agent.
@@ -177,8 +174,9 @@ async def subagent_generate(args: Any, parent_sample: Sample, task: str, subtask
         reward: reward collected by subagent, during interacting with env
         done: whether the environment reached a terminal state
         sample: subagent sample with full TITO data for training
+        turn: number of turns the subagent took
     """
-    sub_max_turns = config["subagent_max_turns"]
+    max_turn = int(config["max_subagent_turns"])
     subagent_system_prompt = render_subagent_system_prompt(
         env_name=env.env_name,
         subtask=subtask,
@@ -204,11 +202,12 @@ async def subagent_generate(args: Any, parent_sample: Sample, task: str, subtask
     obs = ""
     cumulative_reward = 0.0
     done = False
-    
+
     action_list = []
     obs_list = []
 
-    for turn_idx in range(sub_max_turns):
+    turn = 0
+    while True:
         cur_params = sampling_params.copy()
         cur_params["max_new_tokens"] = budget
 
@@ -230,11 +229,13 @@ async def subagent_generate(args: Any, parent_sample: Sample, task: str, subtask
         if not parsed:
             obs = "Your response is not valid. Use <action> ... </action> to interact with environment."
             reward, done, info = 0, False, {}
+            turn += 1
         elif parsed.type == "action" and "COMPLETED" in parsed.content:
             break
         elif parsed.type == "action":
             obs, reward, done, info = await env.step(parsed.content)
             cumulative_reward += reward
+            turn += 1
             action_list.append(parsed.content)
             obs_list.append(obs)
         else:
@@ -250,7 +251,7 @@ async def subagent_generate(args: Any, parent_sample: Sample, task: str, subtask
         if budget <= 0:
             sub_sample.status = Sample.Status.TRUNCATED
             break
-        if done or (parsed is not None and parsed.type == "conclusion"):
+        if turn >= max_turn or done:
             sub_sample.status = Sample.Status.COMPLETED
             break
 
@@ -261,7 +262,7 @@ async def subagent_generate(args: Any, parent_sample: Sample, task: str, subtask
     # We don't set reward for subagent here, currently, we use main agent outcome reward as subagent reward signal (reward_strategy="simple").
     # In the future, we can explore more sophisticated reward assignment strategy and set subagent reward here.
     finalized = _finalize(sub_sample, tokenizer, response_token_ids)
-    return obs, cumulative_reward, done, finalized
+    return obs, cumulative_reward, done, finalized, turn
 
 
 # ---------------------------------------------------------------------------
