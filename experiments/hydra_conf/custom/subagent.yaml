@@ -1,6 +1,6 @@
 name: subagent
 env_name: alfworld
-reward_norm: null
+reward_process: null # experiments.rewards.post_process_rewards_v1
 custom_config:
   max_env_turns: 50
   enable_subagent: true
@@ -10,3 +10,4 @@ custom_config:
     alfworld: http://localhost:36002
     sciworld: http://localhost:36003
     searchqa: http://localhost:36004
+  exp_dir: ${paths.exp_dir}

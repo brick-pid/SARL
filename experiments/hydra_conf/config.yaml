@@ -17,16 +17,6 @@ defaults:
 runtime:
   python_executable: python3
   train_entrypoint: train.py
-  cleanup_commands:
-    - "pkill -9 sglang"
-    - "sleep 3"
-    - "ray stop --force"
-    - "pkill -9 ray"
-    - "pkill -9 python"
-    - "sleep 3"
-    - "pkill -9 ray"
-    - "pkill -9 python"
-  cleanup_ignore_errors: true
   env_vars:
     WANDB_MODE: offline
     NCCL_NVLS_ENABLE: "0"
@@ -37,4 +27,4 @@ hydra:
     name: hydra_runner
     chdir: false
   run:
-    dir: ${paths.repo_dir}/experiments/runs/${now:%m%d-%H%M}/${paths.exp_name}
+    dir: ${paths.exp_dir}

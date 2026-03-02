@@ -6,10 +6,17 @@ support format:
 <subagent> act_str </subagent>
 """
 import re
+import yaml
 from dataclasses import dataclass
 from collections import defaultdict
 from pathlib import Path
 from slime.utils.metric_utils import compute_rollout_step
+
+import shlex
+import subprocess
+from collections.abc import Mapping
+from hydra.core.hydra_config import HydraConfig
+from omegaconf import DictConfig, OmegaConf
 
 
 @dataclass
@@ -77,13 +84,11 @@ def _log_helper(rollout_id, args, samples):
     """
     # hack save rollout
     step = compute_rollout_step(args, rollout_id)
-    dir = Path(args.dump_details)
-    basedir = dir.parent.parent
-    metric_path = basedir / "experiments" / "rollouts" / dir.name / f"eval{step}_{samples[0].metadata.get('data_source')}.metrics"
+    basedir = Path(args.custom_config['exp_dir'])
+    metric_path = basedir / "rollouts" / f"eval_{step}.metrics"
     for sample in samples:
-        data_source = sample.metadata.get("data_source")
         subset = sample.metadata.get('subset', sample.metadata.get("data_source"))
-        output_path = basedir / "experiments" / "rollouts" / dir.name / f"eval{step}_{data_source}_{subset}"
+        output_path = basedir / "rollouts" / f"eval{step}_{subset}"
         output_path.parent.mkdir(parents=True, exist_ok=True)
         with open(output_path, "a") as f:
             f.write(f"reward: {sample.reward}\n")
@@ -111,4 +116,60 @@ def _log_helper(rollout_id, args, samples):
             metric_str += f"----subset rewards for {k}: {sum(v)/len(v)}\n"
         f.write(metric_str)
         f.write("\n")
-            
+
+
+def _render_args(arg_map: Mapping[str, object]) -> list[str]:
+    args: list[str] = []
+    for flag, value in arg_map.items():
+        if OmegaConf.is_config(value):
+            value = OmegaConf.to_container(value, resolve=True)
+        if value is None:
+            continue
+        if isinstance(value, bool):
+            if value:
+                args.append(flag)
+            continue
+        if isinstance(value, (list, tuple)):
+            if len(value) == 0:
+                continue
+            args.append(flag)
+            args.extend(str(item) for item in value)
+            continue
+        args.extend([flag, str(value)])
+    return args
+
+def _run_command(cmd: list[str], *, env: dict[str, str]) -> None:
+    print(f"$ {shlex.join(cmd)}")
+    subprocess.run(cmd, env=env, check=True)
+
+def _load_model_args(cfg: DictConfig, *, env: dict[str, str]) -> list[str]:
+    script_path = cfg.model.script_path
+    bash_command = f'set -euo pipefail; source "{script_path}"; printf "%s\\n" "${{MODEL_ARGS[@]}}"'
+    completed = subprocess.run(
+        ["bash", "-lc", bash_command],
+        env=env,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    args = [line.strip() for line in completed.stdout.splitlines() if line.strip()]
+    if not args:
+        raise ValueError(f"No MODEL_ARGS were loaded from script: {cfg.model.script}")
+    return args
+
+def _dump_resolved_custom_config(cfg: DictConfig) -> str:
+    custom_cfg = OmegaConf.select(cfg, "custom", default=None)
+    if custom_cfg is None:
+        raise ValueError("Missing `custom` config in Hydra config.")
+
+    resolved_custom = OmegaConf.to_container(custom_cfg, resolve=True)
+
+    exp_dir = OmegaConf.select(cfg, "paths.exp_dir", default=None)
+    if exp_dir is None:
+        exp_dir = HydraConfig.get().runtime.output_dir
+
+    exp_dir = str(exp_dir)
+    custom_config_path = exp_dir + "/custom_config.yaml"
+    with open(custom_config_path, "w", encoding="utf-8") as f:
+        yaml.safe_dump(resolved_custom, f, sort_keys=False)
+    return custom_config_path

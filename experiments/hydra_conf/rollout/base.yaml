@@ -13,3 +13,4 @@ cli:
   --balance-data: true
   --sglang-server-concurrency: 32
   --start-rollout-id: 0
+  --debug-rollout-only: true
