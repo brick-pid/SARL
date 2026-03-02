@@ -306,6 +306,7 @@ def _finalize(sample: Sample, tokenizer, response_token_ids: list[int]) -> Sampl
 
     sample.response_length = len(response_token_ids)
     sample.response = tokenizer.decode(response_token_ids, skip_special_tokens=False)
+    sample.trajectory = tokenizer.decode(sample.tokens, skip_special_tokens=False)
     if sample.status is None or sample.status == Sample.Status.PENDING:
         sample.status = Sample.Status.COMPLETED
     return sample
