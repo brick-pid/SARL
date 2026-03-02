@@ -1,0 +1,15 @@
+cli:
+  --prompt-data: ${paths.data_dir}/agentgym/train/${custom.env_name}_train.jsonl
+  --input-key: task_id
+  --metadata-key: metadata
+  --rollout-shuffle: true
+  --num-rollout: 3000
+  --rollout-batch-size: 32
+  --n-samples-per-prompt: 8
+  --rollout-max-context-len: 16384
+  --rollout-max-response-len: 2048
+  --rollout-temperature: 1
+  --use-dynamic-global-batch-size: true
+  --balance-data: true
+  --sglang-server-concurrency: 32
+  --start-rollout-id: 0

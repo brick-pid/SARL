@@ -1,0 +1,33 @@
+resources_cli:
+  --actor-num-nodes: 1
+  --actor-num-gpus-per-node: 4
+  --colocate: true
+
+perf_cli:
+  --tensor-model-parallel-size: 2
+  --sequence-parallel: true
+  --pipeline-model-parallel-size: 1
+  --context-parallel-size: 2
+  --expert-model-parallel-size: 1
+  --expert-tensor-parallel-size: 1
+  --recompute-granularity: full
+  --recompute-method: uniform
+  --recompute-num-layers: 1
+  --use-dynamic-batch-size: true
+  --max-tokens-per-gpu: 16384
+
+ray_start:
+  --head: true
+  --node-ip-address: ${oc.env:MASTER_ADDR,127.0.0.1}
+  --num-gpus: 4
+  --disable-usage-stats: true
+  --dashboard-host: 0.0.0.0
+  --dashboard-port: 8265
+
+ray_job:
+  address: http://127.0.0.1:8265
+  runtime_env:
+    env_vars:
+      PYTHONPATH: /root/Megatron-LM/
+      CUDA_DEVICE_MAX_CONNECTIONS: "1"
+      NCCL_NVLS_ENABLE: "0"

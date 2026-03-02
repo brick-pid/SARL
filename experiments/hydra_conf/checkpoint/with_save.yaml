@@ -1,0 +1,6 @@
+cli:
+  --hf-checkpoint: ${paths.model_dir}/qwen3-4b-inst-2507
+  --load: ${paths.model_dir}/qwen3-4b-inst-2507-torch-dist
+  --ref-load: ${paths.model_dir}/qwen3-4b-inst-2507-torch-dist
+  --save: ${paths.checkpoint_dir}
+  --save-interval: 50

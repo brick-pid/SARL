@@ -1,0 +1,7 @@
+cli:
+  --use-wandb: true
+  --wandb-project: slime-option
+  --wandb-group: ${paths.exp_name}
+  --use-tensorboard: true
+  --tb-project-name: slime-option
+  --tb-experiment-name: ${paths.exp_name}

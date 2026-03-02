@@ -1,0 +1,11 @@
+name: single
+env_name: alfworld
+reward_norm: v1
+custom_config:
+  max_env_turns: 50
+  enable_subagent: false
+  env_addresses:
+    webshop: http://localhost:36001
+    alfworld: http://localhost:36002
+    sciworld: http://localhost:36003
+    searchqa: http://localhost:36004
