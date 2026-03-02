@@ -44,7 +44,7 @@ async def generate(args: Any, sample: Sample, sampling_params: dict, evaluation:
     Returns list[Sample]: [main_sample, *subagent_samples].
     """
     config = getattr(args, "custom_config")
-    max_turns = config["max_turns"]
+    max_turns = config["max_env_turns"]
     env_addresses = config["env_addresses"]
 
     state = GenerateState(args)
