@@ -208,6 +208,7 @@ async def subagent_generate(args: Any, parent_sample: Sample, task: str, subtask
 
     turn = 0
     while True:
+        turn += 1
         cur_params = sampling_params.copy()
         cur_params["max_new_tokens"] = budget
 
@@ -229,13 +230,11 @@ async def subagent_generate(args: Any, parent_sample: Sample, task: str, subtask
         if not parsed:
             obs = "Your response is not valid. Use <action> ... </action> to interact with environment."
             reward, done, info = 0, False, {}
-            turn += 1
         elif parsed.type == "action" and "COMPLETED" in parsed.content:
             break
         elif parsed.type == "action":
             obs, reward, done, info = await env.step(parsed.content)
             cumulative_reward += reward
-            turn += 1
             action_list.append(parsed.content)
             obs_list.append(obs)
         else:
