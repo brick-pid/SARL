@@ -128,7 +128,7 @@ async def generate(args: Any, sample: Sample, sampling_params: dict, evaluation:
         recent_actions.append(current_action)
 
         if parsed is None:
-            obs = "The task is not completed yet. Think more carefully about the environment."
+            obs = "The task is not completed yet. Think more carefully about how to interact with the environment to complete the task. Response should include <action> your action </action>."
             reward, done, info = 0.0, False, {}
             turn += 1 # avoid infinite loop if turn is not incremented
         elif parsed.type == "subagent":
@@ -164,8 +164,12 @@ async def generate(args: Any, sample: Sample, sampling_params: dict, evaluation:
     except Exception as e:
         print(f"Error during closing env: {e}")
     # --- Finalize main sample ---
-    sample.reward = rewards[-1] if rewards else 0.0
-    logger.info(f"#### reward: {sample.reward}, done: {sample.status}, turn: {turn}, token budget: {budget}")
+    if data_source == 'sciworld':
+        sample.reward = rewards[-1] / 100 if rewards and rewards[-1] > 0 else 0.0
+    else:
+        sample.reward = rewards[-1] if rewards else 0.0
+    sample.rewards = rewards
+    logger.info(f"\033[32m#### reward: {sample.reward}, done: {sample.status}, turn: {turn}, token budget: {budget}\033[0m")
     sample.metadata["turn"] = turn
     main_sample = _finalize(sample, tokenizer, response_token_ids)
     if evaluation:

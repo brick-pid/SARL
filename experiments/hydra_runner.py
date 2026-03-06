@@ -2,7 +2,7 @@ import json
 import os
 import hydra
 from omegaconf import DictConfig, OmegaConf
-from utils import _dump_resolved_custom_config, _load_model_args, _render_args, _run_command
+from .utils import _dump_resolved_custom_config, _load_model_args, _render_args, _run_command
 
 @hydra.main(version_base="1.3", config_path="hydra_conf", config_name="config")
 def main(cfg: DictConfig) -> None:

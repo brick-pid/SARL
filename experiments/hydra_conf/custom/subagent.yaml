@@ -5,9 +5,6 @@ custom_config:
   max_env_turns: 50
   enable_subagent: true
   max_subagent_turns: 10
-  env_addresses:
-    webshop: http://localhost:36001
-    alfworld: http://localhost:36002
-    sciworld: http://localhost:36003
-    searchqa: http://localhost:36004
+  env_port_base: 36001
+  env_nums: 8
   exp_dir: ${paths.exp_dir}

@@ -4,9 +4,6 @@ reward_process: null # experiments.rewards.post_process_rewards_v1
 custom_config:
   max_env_turns: 50
   enable_subagent: false
-  env_addresses:
-    webshop: http://localhost:36001
-    alfworld: http://localhost:36002
-    sciworld: http://localhost:36003
-    searchqa: http://localhost:36004
+  env_port_base: 36001
+  env_nums: 8
   exp_dir: ${paths.exp_dir}

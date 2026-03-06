@@ -18,6 +18,27 @@ from collections.abc import Mapping
 from hydra.core.hydra_config import HydraConfig
 from omegaconf import DictConfig, OmegaConf
 
+# environments
+from contextlib import contextmanager
+import time
+from .envs.controller.types import ActionFormat
+from .envs import (
+    AcademiaEnvClient,
+    AlfWorldEnvClient,
+    BabyAIEnvClient,
+    MazeEnvClient,
+    MovieEnvClient,
+    SciworldEnvClient,
+    SheetEnvClient,
+    SqlGymEnvClient,
+    TextCraftEnvClient,
+    TodoEnvClient,
+    WeatherEnvClient,
+    WebarenaEnvClient,
+    WebshopEnvClient,
+    WordleEnvClient,
+    SearchQAEnvClient,
+)
 
 @dataclass
 class ParseResult:
@@ -92,6 +113,7 @@ def _log_helper(rollout_id, args, samples):
         output_path.parent.mkdir(parents=True, exist_ok=True)
         with open(output_path, "a") as f:
             f.write(f"reward: {sample.reward}\n")
+            f.write(f"rewards: {sample.rewards}\n")
             f.write(f"{sample.metadata.get('task_desc')}\n")
             f.write(sample.response)
             if hasattr(sample, "subagent_responses"):
@@ -174,3 +196,41 @@ def _dump_resolved_custom_config(cfg: DictConfig) -> str:
     with open(custom_config_path, "w", encoding="utf-8") as f:
         yaml.safe_dump(resolved_custom, f, sort_keys=False)
     return custom_config_path
+
+
+# Environment client, modified from AgentGym
+def init_env_client(env_name, env_addr, max_retries=3, action_format="react_xml"):
+    # task_name - task dict
+    envclient_classes = {
+        "webshop": WebshopEnvClient,
+        "alfworld": AlfWorldEnvClient,
+        "babyai": BabyAIEnvClient,
+        "sciworld": SciworldEnvClient,
+        "textcraft": TextCraftEnvClient,
+        "webarena": WebarenaEnvClient,
+        "sqlgym": SqlGymEnvClient,
+        "maze": MazeEnvClient,
+        "wordle": WordleEnvClient,
+        "weather": WeatherEnvClient,
+        "todo": TodoEnvClient,
+        "movie": MovieEnvClient,
+        "sheet": SheetEnvClient,
+        "academia": AcademiaEnvClient,
+        "searchqa": SearchQAEnvClient,
+    }
+    # select task according to the name
+    envclient_class = envclient_classes.get(env_name)
+    if envclient_class is None:
+        raise ValueError(f"Unsupported task name: {env_name}")
+    retry = 0
+    while True:
+        try:
+            env_client = envclient_class(env_server_base=env_addr, data_len=1, timeout=2400, action_format=action_format)
+            break
+        except Exception as e:
+            retry += 1
+            print(f"Failed to connect to env server {env_addr}, retrying...({retry}/{max_retries})")
+            if retry > max_retries:
+                raise e
+            time.sleep(5)
+    return env_client
