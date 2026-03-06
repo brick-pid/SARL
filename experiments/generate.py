@@ -93,6 +93,9 @@ async def generate(args: Any, sample: Sample, sampling_params: dict, evaluation:
     budget = args.rollout_max_context_len - len(prompt_ids)
 
     turn = 0
+    recent_actions: list[str] = []
+    MAX_REPEAT = 3
+
     while True:
         # --- Model generates action ---
         cur_params = sampling_params.copy()
@@ -114,8 +117,16 @@ async def generate(args: Any, sample: Sample, sampling_params: dict, evaluation:
         budget -= len(new_token_ids)
 
         # --- Parse action ---
-        breakpoint()
         parsed = tool_parser(resp_text)
+
+        # --- Repeated action detection ---
+        current_action = parsed.content if parsed else resp_text
+        if len(recent_actions) >= MAX_REPEAT - 1 and all(a == current_action for a in recent_actions[-(MAX_REPEAT-1):]):
+            logger.info(f"Detected {MAX_REPEAT} repeated actions, terminating trajectory early")
+            sample.status = Sample.Status.COMPLETED
+            break
+        recent_actions.append(current_action)
+
         if parsed is None:
             obs = "The task is not completed yet. Think more carefully about the environment."
             reward, done, info = 0.0, False, {}
@@ -210,6 +221,8 @@ async def subagent_generate(args: Any, parent_sample: Sample, task: str, subtask
 
     action_list = []
     obs_list = []
+    recent_actions: list[str] = []
+    MAX_REPEAT = 3
 
     turn = 0
     while True:
@@ -232,6 +245,15 @@ async def subagent_generate(args: Any, parent_sample: Sample, task: str, subtask
         budget -= len(new_token_ids)
 
         parsed = tool_parser(resp_text)
+
+        # --- Repeated action detection ---
+        current_action = parsed.content if parsed else resp_text
+        if len(recent_actions) >= MAX_REPEAT - 1 and all(a == current_action for a in recent_actions[-(MAX_REPEAT-1):]):
+            logger.info(f"Subagent detected {MAX_REPEAT} repeated actions, terminating early")
+            sub_sample.status = Sample.Status.COMPLETED
+            break
+        recent_actions.append(current_action)
+
         if not parsed:
             obs = "Your response is not valid. Use <action> ... </action> to interact with environment."
             reward, done, info = 0, False, {}
