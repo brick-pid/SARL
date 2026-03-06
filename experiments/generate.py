@@ -4,6 +4,7 @@ Multi-turn, sub-agent generate function for Gym-style environments.
 
 from __future__ import annotations
 
+import random
 import logging
 from copy import deepcopy
 from typing import Any, List
@@ -12,8 +13,8 @@ from slime.rollout.sglang_rollout import GenerateState
 from slime.utils.http_utils import post
 from slime.utils.types import Sample
 
-from .env import GymEnv
-from .utils import tool_parser
+# from .env import GymEnv
+from .utils import tool_parser, init_env_client
 from .prompts import (
     render_main_system_prompt,
     render_subagent_system_prompt,
@@ -45,7 +46,9 @@ async def generate(args: Any, sample: Sample, sampling_params: dict, evaluation:
     """
     config = getattr(args, "custom_config")
     max_turn = int(config["max_env_turns"])
-    env_addresses = config["env_addresses"]
+    env_nums = config["env_nums"]
+    env_port = config["env_port_base"] + random.randint(0, env_nums-1)
+    env_address = f"http://localhost:{env_port}"
 
     state = GenerateState(args)
     tokenizer = state.tokenizer
@@ -54,7 +57,6 @@ async def generate(args: Any, sample: Sample, sampling_params: dict, evaluation:
     # --- Prepare training setup ---
     task_id = int(sample.prompt)  # --input-key task_id stores value here
     data_source = sample.metadata["data_source"]
-    env_address = env_addresses[data_source]
 
     cumulative_reward = 0.0
     sampling_params = sampling_params.copy()
@@ -64,19 +66,17 @@ async def generate(args: Any, sample: Sample, sampling_params: dict, evaluation:
     subagent_samples: list[Sample] = []
 
     # --- Environment Init ---
-    env = GymEnv(env_name=data_source, address=env_address)
-    obs, info = await env.reset(task_id=task_id)
+    env = init_env_client(env_name=data_source, env_addr=env_address)
+    env.reset(task_id)
+    obs = env.observe()
+        
     done = False
     task = obs # use init obs as task description
     sample.metadata["task_desc"] = task
 
     # --- Build prompt/message history state ---
-    system_prompt = render_main_system_prompt(
-        env_name=data_source,
-        task=task,
-        enable_subagent=config.get("enable_subagent", False),
-    )
-    chat_messages = [{"role": "system", "content": system_prompt}]
+    system_prompt = env.conversation_start[0]["value"] #TODO: add subagent patch
+    chat_messages = [{"role": "system", "content": system_prompt}, {"role": "assistant", "content": env.conversation_start[1]["value"]}, {"role": "user", "content": obs}]
     prompt_ids = tokenizer.apply_chat_template(chat_messages, tokenize=True, add_generation_prompt=True)
     # Model output already ends with <|im_end|> (no_stop_trim=True),
     # so turn_pre starts with "\n" (not <|im_end|>).
@@ -114,6 +114,7 @@ async def generate(args: Any, sample: Sample, sampling_params: dict, evaluation:
         budget -= len(new_token_ids)
 
         # --- Parse action ---
+        breakpoint()
         parsed = tool_parser(resp_text)
         if parsed is None:
             obs = "The task is not completed yet. Think more carefully about the environment."
@@ -127,7 +128,8 @@ async def generate(args: Any, sample: Sample, sampling_params: dict, evaluation:
             cumulative_reward += reward
             turn += sub_turn
         elif parsed.type == "action":
-            obs, reward, done, info = await env.step(parsed.content)
+            step_output = env.step(parsed.content)
+            obs, reward, done = step_output.state, step_output.reward, step_output.done
             cumulative_reward += reward
             turn += 1
         else:
@@ -146,9 +148,12 @@ async def generate(args: Any, sample: Sample, sampling_params: dict, evaluation:
             sample.status = Sample.Status.COMPLETED
             break
 
-    await env.close()
+    try:
+        env.close()
+    except Exception as e:
+        print(f"Error during closing env: {e}")
     # --- Finalize main sample ---
-    if env.env_name == "sciworld":
+    if data_source == "sciworld":
         if cumulative_reward < 0:
             cumulative_reward = 0
         cumulative_reward /= 100
@@ -164,7 +169,7 @@ async def generate(args: Any, sample: Sample, sampling_params: dict, evaluation:
     return all_samples
 
 async def subagent_generate(args: Any, parent_sample: Sample, task: str, subtask: str,
-                            env: GymEnv, tokenizer, url: str, sampling_params: dict, config: dict) -> tuple[str, float, bool, Sample, int]:
+                            env, tokenizer, url: str, sampling_params: dict, config: dict) -> tuple[str, float, bool, Sample, int]:
     """
     Spawn a subagent that runs a shorter agent loop on the same env.
     The subagent will train with the main agent.
@@ -233,7 +238,8 @@ async def subagent_generate(args: Any, parent_sample: Sample, task: str, subtask
         elif parsed.type == "action" and "COMPLETED" in parsed.content:
             break
         elif parsed.type == "action":
-            obs, reward, done, info = await env.step(parsed.content)
+            step_output = env.step(parsed.content)
+            obs, reward, done = step_output.state, step_output.reward, step_output.done
             cumulative_reward += reward
             action_list.append(parsed.content)
             obs_list.append(obs)
