@@ -120,7 +120,8 @@ def _log_helper(rollout_id, args, samples):
 
 def _render_args(arg_map: Mapping[str, object]) -> list[str]:
     args: list[str] = []
-    for flag, value in arg_map.items():
+    for key, value in arg_map.items():
+        flag = f"--{key.replace('_', '-')}"
         if OmegaConf.is_config(value):
             value = OmegaConf.to_container(value, resolve=True)
         if value is None:
