@@ -58,7 +58,7 @@ async def generate(args: Any, sample: Sample, sampling_params: dict, evaluation:
     task_id = int(sample.prompt)  # --input-key task_id stores value here
     data_source = sample.metadata["data_source"]
 
-    cumulative_reward = 0.0
+    rewards: list[float] = []
     sampling_params = sampling_params.copy()
     sampling_params["no_stop_trim"] = True  # ChatML wrapping requires <|im_end|> in output
     sample.metadata["role"] = "mainagent"
@@ -136,12 +136,12 @@ async def generate(args: Any, sample: Sample, sampling_params: dict, evaluation:
                                                                     env=env, tokenizer=tokenizer, url=url, 
                                                                     sampling_params=sampling_params, config=config)
             subagent_samples.append(sub_sample)
-            cumulative_reward += reward
+            rewards.append(reward)
             turn += sub_turn
         elif parsed.type == "action":
             step_output = env.step(parsed.content)
             obs, reward, done = step_output.state, step_output.reward, step_output.done
-            cumulative_reward += reward
+            rewards.append(reward)
             turn += 1
         else:
             # unknown parsed.type
@@ -164,11 +164,7 @@ async def generate(args: Any, sample: Sample, sampling_params: dict, evaluation:
     except Exception as e:
         print(f"Error during closing env: {e}")
     # --- Finalize main sample ---
-    if data_source == "sciworld":
-        if cumulative_reward < 0:
-            cumulative_reward = 0
-        cumulative_reward /= 100
-    sample.reward = cumulative_reward
+    sample.reward = rewards[-1] if rewards else 0.0
     logger.info(f"#### reward: {sample.reward}, done: {sample.status}, turn: {turn}, token budget: {budget}")
     sample.metadata["turn"] = turn
     main_sample = _finalize(sample, tokenizer, response_token_ids)
@@ -216,7 +212,7 @@ async def subagent_generate(args: Any, parent_sample: Sample, task: str, subtask
     budget = args.rollout_max_context_len - len(prompt_ids)
 
     obs = ""
-    cumulative_reward = 0.0
+    rewards: list[float] = []
     done = False
 
     action_list = []
@@ -262,7 +258,7 @@ async def subagent_generate(args: Any, parent_sample: Sample, task: str, subtask
         elif parsed.type == "action":
             step_output = env.step(parsed.content)
             obs, reward, done = step_output.state, step_output.reward, step_output.done
-            cumulative_reward += reward
+            rewards.append(reward)
             action_list.append(parsed.content)
             obs_list.append(obs)
         else:
@@ -289,7 +285,8 @@ async def subagent_generate(args: Any, parent_sample: Sample, task: str, subtask
     # We don't set reward for subagent here, currently, we use main agent outcome reward as subagent reward signal (reward_strategy="simple").
     # In the future, we can explore more sophisticated reward assignment strategy and set subagent reward here.
     finalized = _finalize(sub_sample, tokenizer, response_token_ids)
-    return obs, cumulative_reward, done, finalized, turn
+    final_reward = rewards[-1] if rewards else 0.0
+    return obs, final_reward, done, finalized, turn
 
 
 # ---------------------------------------------------------------------------
