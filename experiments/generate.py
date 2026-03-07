@@ -49,6 +49,7 @@ async def generate(args: Any, sample: Sample, sampling_params: dict, evaluation:
     env_nums = config["env_nums"]
     env_port = config["env_port_base"] + random.randint(0, env_nums-1)
     env_address = f"http://localhost:{env_port}"
+    enable_subagent = config["enable_subagent"]
 
     state = GenerateState(args)
     tokenizer = state.tokenizer
@@ -75,7 +76,11 @@ async def generate(args: Any, sample: Sample, sampling_params: dict, evaluation:
     sample.metadata["task_desc"] = task
 
     # --- Build prompt/message history state ---
-    system_prompt = env.conversation_start[0]["value"] #TODO: add subagent patch
+    env_inst = env.conversation_start[0]["value"]
+    if enable_subagent:
+        system_prompt = render_main_system_prompt(env_name=env.env_name, task=task)
+    else:
+        system_prompt = env_inst
     chat_messages = [{"role": "system", "content": system_prompt}, {"role": "assistant", "content": env.conversation_start[1]["value"]}, {"role": "user", "content": obs}]
     prompt_ids = tokenizer.apply_chat_template(chat_messages, tokenize=True, add_generation_prompt=True)
     # Model output already ends with <|im_end|> (no_stop_trim=True),
@@ -133,7 +138,7 @@ async def generate(args: Any, sample: Sample, sampling_params: dict, evaluation:
             turn += 1 # avoid infinite loop if turn is not incremented
         elif parsed.type == "subagent":
             obs, reward, done, sub_sample, sub_turn = await subagent_generate(args=args, parent_sample=sample, task=task, subtask=parsed.content,
-                                                                    env=env, tokenizer=tokenizer, url=url, 
+                                                                    env=env, env_inst=env_inst, tokenizer=tokenizer, url=url, 
                                                                     sampling_params=sampling_params, config=config)
             subagent_samples.append(sub_sample)
             rewards.append(reward)
@@ -180,7 +185,7 @@ async def generate(args: Any, sample: Sample, sampling_params: dict, evaluation:
     return all_samples
 
 async def subagent_generate(args: Any, parent_sample: Sample, task: str, subtask: str,
-                            env, tokenizer, url: str, sampling_params: dict, config: dict) -> tuple[str, float, bool, Sample, int]:
+                            env, env_inst, tokenizer, url: str, sampling_params: dict, config: dict) -> tuple[str, float, bool, Sample, int]:
     """
     Spawn a subagent that runs a shorter agent loop on the same env.
     The subagent will train with the main agent.
@@ -196,6 +201,7 @@ async def subagent_generate(args: Any, parent_sample: Sample, task: str, subtask
     subagent_system_prompt = render_subagent_system_prompt(
         env_name=env.env_name,
         subtask=subtask,
+        env_inst=env_inst,
     )
     sub_messages = [{"role": "system", "content": subagent_system_prompt}]
 

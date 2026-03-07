@@ -115,23 +115,11 @@ For example, if the question is "What is the capital of France?" and you have fo
 <action>answer[Paris]</action>
 """.strip()
 
-ENV_PROMPTS = {
-    "webshop": {
-        "env_desc": WEBSHOP_ENV_DESC,
-        "env_action": WEBSHOP_ENV_ACTION,
-    },
-    "sciworld": {
-        "env_desc": SCIWORLD_ENV_DESC,
-        "env_action": SCIWORLD_ENV_ACTION,
-    },
-    "alfworld": {
-        "env_desc": ALFWORLD_ENV_DESC,
-        "env_action": ALFWORLD_ENV_ACTION,
-    },
-    "searchqa": {
-        "env_desc": SEARCHQA_ENV_DESC,
-        "env_action": SEARCHQA_ENV_ACTION,
-    },
+ENV_DESC = {
+    "webshop": WEBSHOP_ENV_DESC,
+    "sciworld": SCIWORLD_ENV_DESC,
+    "alfworld": ALFWORLD_ENV_DESC,
+    "searchqa": SEARCHQA_ENV_DESC,
 }
 
 def _validate_template_vars(template_name: str, context: dict[str, Any]) -> None:
@@ -146,29 +134,24 @@ def _validate_template_vars(template_name: str, context: dict[str, Any]) -> None
             f"Missing required template variables for {template_name}: {', '.join(missing_vars)}"
         )
 
-def render_main_system_prompt(env_name: str, task: str, enable_subagent: bool = True) -> str:
-    env_parts = ENV_PROMPTS[env_name]
+def render_main_system_prompt(env_name: str, task: str) -> str:
+    env_desc = ENV_DESC[env_name]
     template = _TEMPLATE_ENV.get_template("main_system.j2")
     context = {
         "env_name": env_name,
-        "enable_subagent": enable_subagent,
-        "env_desc": env_parts["env_desc"],
-        "env_action": env_parts["env_action"],
+        "env_desc": env_desc,
         "task": task,
     }
     _validate_template_vars("main_system.j2", context)
     return template.render(**context).strip()
 
 
-def render_subagent_system_prompt(env_name: str, subtask: str, phase: str = "execution") -> str:
-    env_parts = ENV_PROMPTS[env_name]
+def render_subagent_system_prompt(env_name: str, subtask: str, env_inst) -> str:
     template = _TEMPLATE_ENV.get_template("subagent_system.j2")
     context = {
         "env_name": env_name,
-        "env_desc": env_parts["env_desc"],
-        "env_action": env_parts["env_action"],
+        "env_inst": env_inst,
         "subtask": subtask,
-        "phase": phase,
     }
     _validate_template_vars("subagent_system.j2", context)
     return template.render(**context).strip()
