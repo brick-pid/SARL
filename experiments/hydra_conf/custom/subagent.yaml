@@ -1,7 +1,9 @@
 name: subagent
 env_name: alfworld
-reward_process: null # experiments.rewards.post_process_rewards_v1
+reward_process: experiments.rewards.post_process_rewards
 custom_config:
+  reward_norm: sample_norm      # sample_norm | episode_norm
+  reward_augment: null           # null | pseudo_pos
   max_env_turns: 50
   enable_subagent: true
   max_subagent_turns: 10
