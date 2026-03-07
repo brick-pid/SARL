@@ -11,7 +11,7 @@ class SearchQAEnvClient(BaseEnvClient):
                 {
                     "from": "human",
                     "loss": None,
-                    "value":"""You must always reason inside <think>...</think> first; if you lack knowledge, issue a <search>...</search> and then stop; do not generate <information> or <answer> yet; wait for external input between <information>...</information> before continuing; resume only when new <information> is given; do not skip steps or anticipate answers early.""",
+                    "value":"""You must always reason inside <think>...</think> first; if you lack knowledge, issue a <action> search[query] </action> and then stop; do not generate <answer> yet; wait for external search engine return observation before continuing; resume only when new information is given; do not skip steps or anticipate answers early.""",
                 }
             ),
             ConversationMessage({"from": "gpt", "loss": False, "value": "Ok."}),

@@ -62,6 +62,16 @@ class WebshopAdapter(BaseAdapter):
             ),
             ConversationMessage({"from": "gpt", "loss": False, "value": "Ok."}),
         ),
+        ActionFormat.REACT_XML: (
+            ConversationMessage(
+                {
+                    "from": "human",
+                    "loss": None,
+                    "value": "You are web shopping.\nI will give you instructions about what to do.\nYou have to follow the instructions.\nEvery round I will give you an observation and a list of available actions, you have to respond an action based on the state and instruction.\nYou can use search action if search is available.\nYou can click one of the buttons in clickables.\nAn action should be of the following structure:\n<action> search[keywords] </action>\n<action> click[value] </action>\nIf the action is not valid, perform nothing.\nKeywords in search are up to you, but the value in click must be a value in the list of available actions.\nRemember that your keywords in search should be carefully designed.\nYour response should use the following format:\n<think> I think... </think>\n<action> click[something] </action>",
+                }
+            ),
+            ConversationMessage({"from": "gpt", "loss": False, "value": "Ok."}),
+        ),
         ActionFormat.FUNCTION_CALLING: (
             ConversationMessage(
                 {
