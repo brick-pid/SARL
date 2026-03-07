@@ -1,3 +1,4 @@
+import re
 from typing import Any, Mapping, Dict, List, Optional
 
 import requests
@@ -5,13 +6,23 @@ from requests.exceptions import RequestException
 from .controller import BaseEnvClient, BaseTask
 from .controller.types import ConversationMessage, StepOutput
 
+def parse_action(action_str: str) -> tuple[str | None, str | None]:
+    # parse format of "act[string]", return act and string
+    pattern = r"(\w+)\[(.*)\]"
+    matches = re.findall(pattern, action_str)
+    if not matches:
+        return None, None
+    act, string = matches[-1]
+    return act, string
+
 class SearchQAEnvClient(BaseEnvClient):
     conversation_start = (
             ConversationMessage(
                 {
                     "from": "human",
                     "loss": None,
-                    "value":"""You must always reason inside <think>...</think> first; if you lack knowledge, issue a <action> search[query] </action> and then stop; do not generate <answer> yet; wait for external search engine return observation before continuing; resume only when new information is given; do not skip steps or anticipate answers early.""",
+                    "value":"""
+You should first reason about how to solve the question, then think carefully which search query best advances answering the question. Once you've finished your reasoning, you should choose a search query for current step and present it within <action> </action> tags. Available Actions:\n- <action> search[query] </action>: search for relevant information.\n- <action> answer[answer] </action>: provide the final concise answer. When giving the final answer, make it short and concise. Don't include any additional explanations or notes. For example, if the question is "What is the capital of France?" and you have found the answer to be "Paris", you should respond with: <action> answer[Paris] </action>""".strip(),
                 }
             ),
             ConversationMessage({"from": "gpt", "loss": False, "value": "Ok."}),
@@ -65,6 +76,14 @@ class SearchQAEnvClient(BaseEnvClient):
     def step(self, action: str) -> StepOutput:
         # action is the original output of llm
         # print(f"Action: {action}")
+        act, content = parse_action(action)
+        if act == "answer":
+            action = f"<answer> {content} </answer>"
+        elif act == "search":
+            action = f"<search> {content} </search>"
+        else:
+            state = "Invalid action format. Please use <action>search[query]</action> or <action>answer[answer]</action>."
+            return StepOutput(state=state, reward=0.0, done=False)
         response = self._post("step", {"action": action})
         # print(response)
         return StepOutput(
