@@ -7,6 +7,7 @@ support format:
 """
 import re
 import yaml
+import numpy as np
 from dataclasses import dataclass
 from collections import defaultdict
 from pathlib import Path
@@ -76,6 +77,29 @@ def log_rollout_data(rollout_id, args, samples, rollout_extra_metrics, rollout_t
     rollout_extra_metrics["rollout/success_rate"] = success_count / len(samples)
     for subset in subset_count:
         rollout_extra_metrics[f"rollout/{subset}/success_rate"] = subset_success_count[subset] / subset_count[subset]
+
+    # --- Turn metrics (mainagent only) ---
+    subset_turns = defaultdict(list)
+    all_turns = []
+    for sample in samples:
+        if sample.metadata.get("role") != "mainagent":
+            continue
+        turn = sample.metadata.get("turn")
+        if turn is None:
+            continue
+        all_turns.append(turn)
+        subset = sample.metadata.get('subset', sample.metadata.get("data_source"))
+        subset_turns[subset].append(turn)
+
+    if all_turns:
+        rollout_extra_metrics["rollout/turn/mean"] = np.mean(all_turns).item()
+        rollout_extra_metrics["rollout/turn/max"] = np.max(all_turns).item()
+        rollout_extra_metrics["rollout/turn/min"] = np.min(all_turns).item()
+        for subset, turns in subset_turns.items():
+            rollout_extra_metrics[f"rollout/{subset}/turn/mean"] = np.mean(turns).item()
+            rollout_extra_metrics[f"rollout/{subset}/turn/max"] = np.max(turns).item()
+            rollout_extra_metrics[f"rollout/{subset}/turn/min"] = np.min(turns).item()
+
     return False
 
 
@@ -94,9 +118,32 @@ def log_eval_rollout_data(rollout_id, args, data, extra_metrics) -> bool:
             subset_count[subset] += 1
             subset_success_count[subset] += success
         _log_helper(rollout_id, args, samples)
-        extra_metrics[f"eval/{dataset_name}/success_rate"] = success_count / len(samples)    
+        extra_metrics[f"eval/{dataset_name}/success_rate"] = success_count / len(samples)
         for subset in subset_count:
             extra_metrics[f"eval/{dataset_name}/{subset}/success_rate"] = subset_success_count[subset] / subset_count[subset]
+
+        # --- Turn metrics (mainagent only) ---
+        subset_turns = defaultdict(list)
+        all_turns = []
+        for sample in samples:
+            if sample.metadata.get("role") != "mainagent":
+                continue
+            turn = sample.metadata.get("turn")
+            if turn is None:
+                continue
+            all_turns.append(turn)
+            subset = sample.metadata.get('subset', sample.metadata.get("data_source"))
+            subset_turns[subset].append(turn)
+
+        if all_turns:
+            extra_metrics[f"eval/{dataset_name}/turn/mean"] = np.mean(all_turns).item()
+            extra_metrics[f"eval/{dataset_name}/turn/max"] = np.max(all_turns).item()
+            extra_metrics[f"eval/{dataset_name}/turn/min"] = np.min(all_turns).item()
+            for subset, turns in subset_turns.items():
+                extra_metrics[f"eval/{dataset_name}/{subset}/turn/mean"] = np.mean(turns).item()
+                extra_metrics[f"eval/{dataset_name}/{subset}/turn/max"] = np.max(turns).item()
+                extra_metrics[f"eval/{dataset_name}/{subset}/turn/min"] = np.min(turns).item()
+
     return False
 
 def _log_helper(rollout_id, args, samples):
