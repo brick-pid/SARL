@@ -78,7 +78,7 @@ async def generate(args: Any, sample: Sample, sampling_params: dict, evaluation:
     # --- Build prompt/message history state ---
     env_inst = env.conversation_start[0]["value"]
     if enable_subagent:
-        system_prompt = render_main_system_prompt(env_name=env.env_name, task=task)
+        system_prompt = render_main_system_prompt(env_name=data_source, task=task)
     else:
         system_prompt = env_inst
     chat_messages = [{"role": "system", "content": system_prompt}, {"role": "assistant", "content": env.conversation_start[1]["value"]}, {"role": "user", "content": obs}]
@@ -199,7 +199,7 @@ async def subagent_generate(args: Any, parent_sample: Sample, task: str, subtask
     """
     max_turn = int(config["max_subagent_turns"])
     subagent_system_prompt = render_subagent_system_prompt(
-        env_name=env.env_name,
+        env_name=parent_sample.metadata["data_source"],
         subtask=subtask,
         env_inst=env_inst,
     )
