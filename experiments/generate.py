@@ -178,7 +178,7 @@ async def generate(args: Any, sample: Sample, sampling_params: dict, evaluation:
     sample.metadata["turn"] = turn
     main_sample = _finalize(sample, tokenizer, response_token_ids)
     if evaluation:
-        main_sample.subagent_responses = [s.response for s in subagent_samples]
+        main_sample.subagent_trajectories = [s.trajectory for s in subagent_samples]
         return main_sample
     all_samples = [main_sample] + subagent_samples
     all_samples = _post_process(samples=all_samples, reward_strategy="simple")

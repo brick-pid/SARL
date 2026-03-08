@@ -162,9 +162,9 @@ def _log_helper(rollout_id, args, samples):
             f.write(f"reward: {sample.reward}\n")
             f.write(f"rewards: {sample.rewards}\n")
             f.write(f"{sample.metadata.get('task_desc')}\n")
-            f.write(sample.response)
-            if hasattr(sample, "subagent_responses"):
-                for i, sub_resp in enumerate(sample.subagent_responses):
+            f.write(sample.trajectory)
+            if hasattr(sample, "subagent_trajectories"):
+                for i, sub_resp in enumerate(sample.subagent_trajectories):
                     f.write(f"### subagent response {i}\n")
                     f.write(sub_resp)
             f.write("\n==============\n")
