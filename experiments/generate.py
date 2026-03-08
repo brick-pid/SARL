@@ -14,7 +14,7 @@ from slime.utils.http_utils import post
 from slime.utils.types import Sample
 
 # from .env import GymEnv
-from .utils import tool_parser, init_env_client
+from .utils import init_env_client
 from .prompts import render_system_prompt
 
 logger = logging.getLogger(__name__)
@@ -35,7 +35,7 @@ async def generate(args: Any, sample: Sample, sampling_params: dict, evaluation:
       - Environment observation tokens: loss_mask=0, logprobs=0.0
 
     When the model emits <subagent>task</subagent>, a subagent is spawned
-    to run a shorter agent loop on the env. The subagent's conclusion is
+    to run a shorter agent loop on the env. The subagent's observation is
     fed back to the main agent as an observation, and the subagent's Sample
     is collected for training alongside the main agent's Sample.
 
@@ -116,18 +116,18 @@ async def generate(args: Any, sample: Sample, sampling_params: dict, evaluation:
         budget -= len(new_token_ids)
 
         # --- Parse action ---
-        parsed = tool_parser(resp_text)
+        parsed = env.parse_response(resp_text)
 
         # --- Repeated action detection ---
-        current_action = parsed.content if parsed else resp_text
+        current_action = parsed.content
         if len(recent_actions) >= MAX_REPEAT - 1 and all(a == current_action for a in recent_actions[-(MAX_REPEAT-1):]):
             logger.info(f"Detected {MAX_REPEAT} repeated actions, terminating trajectory early")
             sample.status = Sample.Status.COMPLETED
             break
         recent_actions.append(current_action)
 
-        if parsed is None:
-            obs = "The task is not completed yet. Think more carefully about how to interact with the environment to complete the task. Response should include <action> your action </action>."
+        if parsed.type is None:
+            obs = env.invalid_action_obs
             reward, done, info = 0.0, False, {}
             turn += 1 # avoid infinite loop if turn is not incremented
         elif parsed.type == "subagent":
@@ -185,7 +185,7 @@ async def subagent_generate(args: Any, parent_sample: Sample, task: str, subtask
     The subagent will train with the main agent.
 
     Returns:
-        obs(conclusion): str to feed back into the main agent as observation
+        obs: str to feed back into the main agent as observation
         reward: reward collected by subagent, during interacting with env
         done: whether the environment reached a terminal state
         sample: subagent sample with full TITO data for training
@@ -245,30 +245,28 @@ async def subagent_generate(args: Any, parent_sample: Sample, task: str, subtask
 
         budget -= len(new_token_ids)
 
-        parsed = tool_parser(resp_text)
+        parsed = env.parse_response(resp_text)
 
         # --- Repeated action detection ---
-        current_action = parsed.content if parsed else resp_text
+        current_action = parsed.content
         if len(recent_actions) >= MAX_REPEAT - 1 and all(a == current_action for a in recent_actions[-(MAX_REPEAT-1):]):
             logger.info(f"Subagent detected {MAX_REPEAT} repeated actions, terminating early")
             sub_sample.status = Sample.Status.COMPLETED
             break
         recent_actions.append(current_action)
 
-        if not parsed:
-            obs = "Your response is not valid. Use <action> ... </action> to interact with environment."
+        if parsed.type != "action": # subagent should only emit actions
+            obs = env.invalid_action_obs
             reward, done, info = 0, False, {}
-        elif parsed.type == "action" and "COMPLETED" in parsed.content:
+        elif "COMPLETED" in parsed.content:
+            sub_sample.status = Sample.Status.COMPLETED
             break
-        elif parsed.type == "action":
+        else:
             step_output = env.step(parsed.content)
             obs, reward, done = step_output.state, step_output.reward, step_output.done
             rewards.append(reward)
             action_list.append(parsed.content)
             obs_list.append(obs)
-        else:
-            # raise ValueError(f"Unrecognized tool response type from subagent: {parsed.type}")
-            break
 
         # Encode env observation as ChatML user turn (loss_mask=0)
         obs_ids = tokenizer.encode(obs, add_special_tokens=False)

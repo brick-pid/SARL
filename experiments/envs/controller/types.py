@@ -75,6 +75,12 @@ class Function():
 
 
 @dataclass
+class ParseResult:
+    type: str | None  # "action", "subagent", or None if parse failed
+    content: str
+
+
+@dataclass
 class ChatCompletionMessageToolCall():
     # tool_call id
     id: str

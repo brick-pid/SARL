@@ -107,12 +107,12 @@ When all necessary information is gathered, return a short and concise final ans
 
 SEARCHQA_ACTIONS = """
 Available Actions:
-- <action>search[query]</action>: search for relevant information.
-- <action>answer[answer]</action>: provide the final concise answer.
+- <search>query</search>: search for relevant information.
+- <answer>answer</answer>: provide the final concise answer.
 
 When giving the final answer, make it short and concise. Don't include any additional explanations or notes.
-For example, if the question is "What is the capital of France?" and you have found the answer to be "Paris", you should respond with:
-<action>answer[Paris]</action>
+For example, if the question is "What is the capital of France?":
+<answer>Paris</answer>
 """.strip()
 
 # ---- WebArena ----

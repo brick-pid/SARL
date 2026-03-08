@@ -4,16 +4,8 @@ from typing import Any, Mapping, Dict, List, Optional
 import requests
 from requests.exceptions import RequestException
 from .controller import BaseEnvClient, BaseTask
-from .controller.types import StepOutput
+from .controller.types import ParseResult, StepOutput
 
-def parse_action(action_str: str) -> tuple[str | None, str | None]:
-    # parse format of "act[string]", return act and string
-    pattern = r"(\w+)\[(.*)\]"
-    matches = re.findall(pattern, action_str)
-    if not matches:
-        return None, None
-    act, string = matches[-1]
-    return act, string
 
 class SearchQAEnvClient(BaseEnvClient):
     def __init__(
@@ -61,19 +53,25 @@ class SearchQAEnvClient(BaseEnvClient):
         question = self._get("observation")
         return question
 
+    def parse_response(self, response: str) -> ParseResult:
+        """Match <search>...</search>, <answer>...</answer> or <action>...</action> tags."""
+        pattern = r"<(search|answer|action)>(.*?)</\1>"
+        matches = list(re.finditer(pattern, response, re.DOTALL))
+        if not matches:
+            return ParseResult(type=None, content=response)
+        m = matches[-1]
+        tag = m.group(1)
+        inner = m.group(2).strip()
+        return ParseResult(type="action", content=f"<{tag}>{inner}</{tag}>")
+
+    @property
+    def invalid_action_obs(self) -> str:
+        return ("The task is not completed yet. Think more carefully about how to "
+                "interact with the environment to complete the task. "
+                "Response should include <search>query</search> or <answer>answer</answer>.")
+
     def step(self, action: str) -> StepOutput:
-        # action is the original output of llm
-        # print(f"Action: {action}")
-        act, content = parse_action(action)
-        if act == "answer":
-            action = f"<answer> {content} </answer>"
-        elif act == "search":
-            action = f"<search> {content} </search>"
-        else:
-            state = "Invalid action format. Please use <action>search[query]</action> or <action>answer[answer]</action>."
-            return StepOutput(state=state, reward=0.0, done=False)
         response = self._post("step", {"action": action})
-        # print(response)
         return StepOutput(
             state=response["observation"],
             reward=response["reward"],
@@ -84,7 +82,7 @@ class SearchQAEnvClient(BaseEnvClient):
         self.id = id
         response = self._post("reset", {"id": self.id})
         return response
-    
+
     def close(self):
         response = self._post("close", {})
         return response
