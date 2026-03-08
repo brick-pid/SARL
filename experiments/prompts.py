@@ -15,16 +15,22 @@ _TEMPLATE_ENV = Environment(
     undefined=StrictUndefined,
 )
 
-WEBSHOP_ENV_DESC = """
-Webshop is a e-commerce shopping environment where you need to find and purchase product based on given shoping goal. \
-You should first reason step-by-step about the current situation, then think carefully which available action best advances the shopping goal. 
-Once you've finished your reasoning, you should choose an available action for current step and present it within <action> </action> tags.
+# ---------------------------------------------------------------------------
+# Environment prompt components — single source of truth
+# ---------------------------------------------------------------------------
+
+# ---- Webshop ----
+WEBSHOP_DESC = """
+Webshop is an e-commerce shopping environment where you need to find and purchase product based on given shopping goal.
 """.strip()
 
-WEBSHOP_ENV_ACTION = """
-Every round I will give you an observation and a list of available actions, you have to respond to an action based on the state and instruction. \
-You can use search action if the search is available. You can click one of the buttons in clickables. If the action is not valid, perform nothing. \
-Keywords in search are up to you, but the value in click must be a value in the list of available actions. Remember that your keywords in search should be carefully designed.
+WEBSHOP_ACTIONS = """
+Every round I will give you an observation and a list of available actions, you have to respond an action based on the state and instruction.
+You can use search action if search is available.
+You can click one of the buttons in clickables.
+If the action is not valid, perform nothing.
+Keywords in search are up to you, but the value in click must be a value in the list of available actions.
+Remember that your keywords in search should be carefully designed.
 
 There are different types of pages:
 - Initial Page: You can perform search actions to find products.
@@ -36,76 +42,70 @@ Available Actions:
 - <action>click[button]</action>: navigate by clicking buttons or items.
 """.strip()
 
-SCIWORLD_ENV_DESC = """
+# ---- SciWorld ----
+SCIWORLD_DESC = """
 SciWorld is a scientific interactive environment with rooms, containers, tools, substances, and devices.
 You need to complete a science task by exploring, manipulating objects, and performing valid action sequences.
 """.strip()
 
-SCIWORLD_ENV_ACTION = """
-You should first reason step-by-step about the current situation, then think carefully which available action best advances the research goal. 
-Once you've finished your reasoning, you should choose an available action for current step and present it within <action> </action> tags.
-
+SCIWORLD_ACTIONS = """
 Available Actions:
-- <action>open [OBJ]</action>
-- <action>close [OBJ]</action>
-- <action>activate [OBJ]</action>
-- <action>deactivate [OBJ]</action>
-- <action>connect [OBJ] to [OBJ]</action>
-- <action>disconnect [OBJ]</action>
-- <action>use [OBJ] [on OBJ]</action>
-- <action>look around</action>
-- <action>look at [OBJ]</action>
-- <action>look in [OBJ]</action>
-- <action>read [OBJ]</action>
-- <action>move [OBJ] to [OBJ]</action>
-- <action>pick up [OBJ]</action>
-- <action>put down [OBJ]</action>
-- <action>pour [OBJ] into [OBJ]</action>
-- <action>dunk [OBJ] into [OBJ]</action>
-- <action>mix [OBJ]</action>
-- <action>go to [LOC]</action>
-- <action>eat [OBJ]</action>
-- <action>flush [OBJ]</action>
-- <action>focus on [OBJ]</action>
-- <action>wait</action>
-- <action>wait1</action>
-- <action>task</action>
-- <action>inventory</action>
+- <action>open [OBJ]</action>: open a container.
+- <action>close [OBJ]</action>: close a container.
+- <action>activate [OBJ]</action>: activate a device (e.g. turn on a stove to heat something).
+- <action>deactivate [OBJ]</action>: deactivate a device.
+- <action>connect [OBJ] to [OBJ]</action>: connect electrical components to create a circuit.
+- <action>disconnect [OBJ]</action>: disconnect electrical components.
+- <action>use [OBJ] [on OBJ]</action>: use a device/item as a tool, optionally on another object.
+- <action>look around</action>: describe the current room.
+- <action>look at [OBJ]</action>: describe an object in detail.
+- <action>look in [OBJ]</action>: describe a container's contents.
+- <action>read [OBJ]</action>: read a note or book.
+- <action>move [OBJ] to [OBJ]</action>: move an object to a container.
+- <action>pick up [OBJ]</action>: move an object to the inventory.
+- <action>put down [OBJ]</action>: drop an inventory item.
+- <action>pour [OBJ] into [OBJ]</action>: pour a liquid into a container.
+- <action>dunk [OBJ] into [OBJ]</action>: dunk a container into a liquid.
+- <action>mix [OBJ]</action>: chemically mix the contents of a container.
+- <action>go to [LOC]</action>: move to a new location.
+- <action>eat [OBJ]</action>: eat a food.
+- <action>flush [OBJ]</action>: flush a toilet.
+- <action>focus on [OBJ]</action>: signal intent on a task object.
+- <action>wait</action>: take no action for 10 iterations.
+- <action>wait1</action>: take no action for 1 iteration.
+- <action>task</action>: describe the current task.
+- <action>inventory</action>: list your inventory.
 """.strip()
 
-ALFWORLD_ENV_DESC = """
+# ---- ALFWorld ----
+ALFWORLD_DESC = """
 ALFWorld is a household environment with rooms, receptacles, and manipulable objects.
 You need to solve a household goal by navigating and interacting with objects and containers.
 """.strip()
 
-ALFWORLD_ENV_ACTION = """
-You should first reason step-by-step about the current situation, then think carefully which available action best advances the household task. 
-Once you've finished your reasoning, you should choose an available action for current step and present it within <action> </action> tags.
-
+ALFWORLD_ACTIONS = """
 Available Actions:
-- <action>go to [LOCATION]</action>
-- <action>take [OBJECT] from [RECEPTACLE]</action>
-- <action>put [OBJECT] in/on [RECEPTACLE]</action>
-- <action>open [RECEPTACLE]</action>
-- <action>close [RECEPTACLE]</action>
-- <action>toggle [OBJECT] [RECEPTACLE]</action>
-- <action>clean [OBJECT] with [RECEPTACLE]</action>
-- <action>heat [OBJECT] with [RECEPTACLE]</action>
-- <action>cool [OBJECT] with [RECEPTACLE]</action>
-- <action>inventory</action>
-- <action>look</action>
-- <action>examine [OBJECT]</action>
+- <action>go to [LOCATION]</action>: move to a receptacle or location.
+- <action>take [OBJECT] from [RECEPTACLE]</action>: pick up an object from a receptacle.
+- <action>put [OBJECT] in/on [RECEPTACLE]</action>: put an object on a receptacle.
+- <action>open [RECEPTACLE]</action>: open a receptacle to reveal its contents.
+- <action>close [RECEPTACLE]</action>: close a receptacle.
+- <action>toggle [OBJECT] [RECEPTACLE]</action>: switch an object on or off.
+- <action>clean [OBJECT] with [RECEPTACLE]</action>: clean an object using a receptacle.
+- <action>heat [OBJECT] with [RECEPTACLE]</action>: heat an object using a receptacle.
+- <action>cool [OBJECT] with [RECEPTACLE]</action>: cool an object using a receptacle.
+- <action>inventory</action>: list objects currently being carried.
+- <action>look</action>: describe the current situation.
+- <action>examine [OBJECT]</action>: examine an object or receptacle in detail.
 """.strip()
 
-SEARCHQA_ENV_DESC = """
+# ---- SearchQA ----
+SEARCHQA_DESC = """
 SearchEnv is a websearch environment. You need to answer a question by issuing search queries and iteratively refining your search based on retrieved information.
 When all necessary information is gathered, return a short and concise final answer.
 """.strip()
 
-SEARCHQA_ENV_ACTION = """
-You should first reason step-by-step about the current situation, then think carefully which search query best advances answering the question.
-Once you've finished your reasoning, you should choose a search query for current step and present it within <action> </action> tags.
-
+SEARCHQA_ACTIONS = """
 Available Actions:
 - <action>search[query]</action>: search for relevant information.
 - <action>answer[answer]</action>: provide the final concise answer.
@@ -115,12 +115,74 @@ For example, if the question is "What is the capital of France?" and you have fo
 <action>answer[Paris]</action>
 """.strip()
 
-ENV_DESC = {
-    "webshop": WEBSHOP_ENV_DESC,
-    "sciworld": SCIWORLD_ENV_DESC,
-    "alfworld": ALFWORLD_ENV_DESC,
-    "searchqa": SEARCHQA_ENV_DESC,
+# ---- WebArena ----
+WEBARENA_DESC = """
+You are an autonomous intelligent agent tasked with navigating a web browser. You will be given web-based tasks. These tasks will be accomplished through the use of specific actions you can issue.
+
+Here's the information you'll have:
+The user's objective: This is the task you're trying to complete.
+The current web page's accessibility tree: This is a simplified representation of the webpage, providing key information.
+The current web page's URL: This is the page you're currently navigating.
+The open tabs: These are the tabs you have open.
+The previous action: This is the action you just performed. It may be helpful to track your progress.
+""".strip()
+
+WEBARENA_ACTIONS = """
+The actions you can perform fall into several categories:
+
+Page Operation Actions:
+- <action>click [id]</action>: click on an element with a specific id on the webpage.
+- <action>type [id] [content] [0|1]</action>: type the content into the field with id. By default, the "Enter" key is pressed after typing unless the last parameter is set to 0.
+- <action>hover [id]</action>: hover over an element with id.
+- <action>press [key_comb]</action>: simulate the pressing of a key combination on the keyboard (e.g., Ctrl+v).
+- <action>scroll [down|up]</action>: scroll the page up or down to reveal content below or above the current view.
+
+Tab Management Actions:
+- <action>new_tab</action>: open a new, empty browser tab.
+- <action>tab_focus [tab_index]</action>: switch the browser's focus to a specific tab using its index.
+- <action>close_tab</action>: close the currently active tab.
+
+URL Navigation Actions:
+- <action>goto [url]</action>: navigate to a specific URL.
+- <action>go_back</action>: navigate to the previously viewed page.
+- <action>go_forward</action>: navigate to the next page (if a previous 'go_back' action was performed).
+
+Completion Action:
+- <action>stop [answer]</action>: issue this action when you believe the task is complete. If the objective is to find a text-based answer, provide the answer in the bracket. If you believe the task is impossible to complete, provide the answer as "N/A" in the bracket.
+
+Homepage:
+If you want to visit other websites, check out the homepage at http://homepage.com. It has a list of websites you can visit.
+
+Rules:
+1. You should only issue an action that is valid given the current observation.
+2. You should only issue one action at a time.
+3. You should follow the examples to reason step by step and then issue the next action.
+4. For ALL actions that take parameters, you MUST enclose each parameter in square brackets [].
+5. Issue stop action when you think you have achieved the objective. Don't generate anything after stop.
+""".strip()
+
+# ---------------------------------------------------------------------------
+# Registry: unified reference
+# ---------------------------------------------------------------------------
+
+ENV_REGISTRY = {
+    "webshop":  {"desc": WEBSHOP_DESC,  "actions": WEBSHOP_ACTIONS},
+    "sciworld": {"desc": SCIWORLD_DESC, "actions": SCIWORLD_ACTIONS},
+    "alfworld": {"desc": ALFWORLD_DESC, "actions": ALFWORLD_ACTIONS},
+    "searchqa": {"desc": SEARCHQA_DESC, "actions": SEARCHQA_ACTIONS},
+    "webarena": {"desc": WEBARENA_DESC, "actions": WEBARENA_ACTIONS},
 }
+
+# ---------------------------------------------------------------------------
+# Template rendering
+# ---------------------------------------------------------------------------
+
+_MODE_TEMPLATE = {
+    "single":   "single_system.j2",
+    "main":     "main_system.j2",
+    "subagent": "subagent_system.j2",
+}
+
 
 def _validate_template_vars(template_name: str, context: dict[str, Any]) -> None:
     source, _, _ = _TEMPLATE_ENV.loader.get_source(_TEMPLATE_ENV, template_name)
@@ -134,24 +196,27 @@ def _validate_template_vars(template_name: str, context: dict[str, Any]) -> None
             f"Missing required template variables for {template_name}: {', '.join(missing_vars)}"
         )
 
-def render_main_system_prompt(env_name: str, task: str) -> str:
-    env_desc = ENV_DESC[env_name]
-    template = _TEMPLATE_ENV.get_template("main_system.j2")
+
+def render_system_prompt(env_name: str, mode: str, task: str, subtask: str | None = None) -> str:
+    """Render a system prompt for any mode.
+
+    Args:
+        env_name: environment key in ENV_REGISTRY (e.g. "webshop")
+        mode: "single" | "main" | "subagent"
+        task: task description (initial observation)
+        subtask: subtask description (required when mode="subagent")
+    """
+    if mode not in _MODE_TEMPLATE:
+        raise ValueError(f"Unknown mode: {mode!r}. Expected one of {list(_MODE_TEMPLATE)}")
+    reg = ENV_REGISTRY[env_name]
+    template_name = _MODE_TEMPLATE[mode]
+    template = _TEMPLATE_ENV.get_template(template_name)
     context = {
         "env_name": env_name,
-        "env_desc": env_desc,
+        "env_desc": reg["desc"],
+        "env_actions": reg["actions"],
         "task": task,
-    }
-    _validate_template_vars("main_system.j2", context)
-    return template.render(**context).strip()
-
-
-def render_subagent_system_prompt(env_name: str, subtask: str, env_inst) -> str:
-    template = _TEMPLATE_ENV.get_template("subagent_system.j2")
-    context = {
-        "env_name": env_name,
-        "env_inst": env_inst,
         "subtask": subtask,
     }
-    _validate_template_vars("subagent_system.j2", context)
+    _validate_template_vars(template_name, context)
     return template.render(**context).strip()

@@ -2,65 +2,12 @@ from typing import Any, Mapping, Dict
 
 import requests
 from requests.exceptions import RequestException
+
 from .controller import BaseEnvClient, BaseTask
-from .controller.types import ConversationMessage, StepOutput
-import re
+from .controller.types import StepOutput
 
 
 class WebarenaEnvClient(BaseEnvClient):
-    conversation_start = (
-        ConversationMessage(
-            {
-                "from": "human",
-                "loss": None,
-                "value": """
-You are an autonomous intelligent agent tasked with navigating a web browser.You will be given web-based tasks. These tasks will be accomplished through the use of specific actions you can issue.
-
-Here's the information you'll have:
-The user's objective: This is the task you're trying to complete.
-The current web page's accessibility tree: This is a simplified representation of the webpage, providing key information.
-The current web page's URL: This is the page you're currently navigating.
-The open tabs: These are the tabs you have open.
-The previous action: This is the action you just performed. It may be helpful to track your progress.
-
-The actions you can perform fall into several categories:
-
-Page Operation Actions:
-<action> click [id] </action>: This action clicks on an element with a specific id on the webpage.
-<action> type [id] [content] [0|1] </action>: Use this to type the content into the field with id. By default, the \"Enter\" key is pressed after typing unless the last parameter is set to 0.
-<action> hover [id] </action>: Hover over an element with id.
-<action> press [key_comb] </action>:  Simulates the pressing of a key combination on the keyboard (e.g., Ctrl+v).
-<action> scroll [down|up] </action>: Scroll the page up or down to reveal content below or above the current view.
-
-Tab Management Actions:
-<action> new_tab </action>: Open a new, empty browser tab.
-<action> tab_focus [tab_index] </action>: Switch the browser's focus to a specific tab using its index.
-<action> close_tab </action>: Close the currently active tab.
-
-URL Navigation Actions:
-<action> goto [url] </action>: Navigate to a specific URL.
-<action> go_back </action>: Navigate to the previously viewed page.
-<action> go_forward </action>: Navigate to the next page (if a previous 'go_back' action was performed).
-
-Completion Action:
-<action> stop [answer] </action>: Issue this action when you believe the task is complete. If the objective is to find a text-based answer, provide the answer in the bracket. If you believe the task is impossible to complete, provide the answer as \"N/A\" in the bracket.
-
-Homepage:
-If you want to visit other websites, check out the homepage at http://homepage.com. It has a list of websites you can visit.
-
-To be successful, it is very important to follow the following rules:
-1. You should only issue an action that is valid given the current observation
-2. You should only issue one action at a time.
-3. You should follow the examples to reason step by step and then issue the next action.
-4.For ALL actions that take parameters, you MUST enclose each parameter in square brackets [].
-5. Generate the action in the correct format. Start with a \"Let's think step-by-step...In summary, the next action I will perform is\" phrase, followed by action inside triple backticks (```). For example, \"Let's think step-by-step. This page has a search box whose ID is [164]. According to the nominatim rule of openstreetmap, I can search for the restaurants near a location by \"restaurants near\". I can submit my typing by pressing the Enter afterwards. In summary, the next action I will perform is ```type [164] [restaurants near CMU] [1]```\".
-6. Issue stop action when you think you have achieved the objective. Don't generate anything after stop.
-""".strip(),
-            }
-        ),
-        ConversationMessage({"from": "gpt", "loss": False, "value": "Ok."}),
-    )
-
     def __init__(
         self, env_server_base: str, data_len: int, *args, timeout: int = 300, **kwargs
     ):
@@ -104,29 +51,15 @@ To be successful, it is very important to follow the following rules:
         return response
 
     def step(self, action: str) -> StepOutput:
-        # action is the original output of llm
-        _action = re.findall(r"```(.*?)```", action, re.DOTALL)
-        # if len(_action) > 1:
-        #     return StepOutput(
-        #         state=f"Each triple backtick represents one action, and only one action is allowed per response. Found {len(_action)} triple backticks in your response, which represent {len(_action)} actions. Please adjust accordingly.",
-        #         reward=0,
-        #         done=False,
-        #         # action=action,
-        #     )
-        if len(_action) == 0:
-            return StepOutput(
-                state="Cannot parse action from response. Your action should be inside triple backticks (```). Please adjust accordingly.",
-                reward=0,
-                done=False,
-                # action=action,
-            )
-        response = self._post("step", {"action": action})
+        # action has already been parsed by tool_parser (e.g. "click [id]").
+        # Wrap in backticks so the server-side extract_action can parse it.
+        wrapped = f"```{action}```"
+        response = self._post("step", {"action": wrapped})
         reward = response["reward"] if response["terminated"] else 0
         return StepOutput(
             state=response["observation"],
             reward=reward,
             done=response["terminated"],
-            # action=action,
         )
 
     def reset(self, idx: int) -> Dict[str, Any]:

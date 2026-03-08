@@ -246,6 +246,7 @@ def _dump_resolved_custom_config(cfg: DictConfig) -> str:
 
 
 # Environment client, modified from AgentGym
+# NOTE: only REACT_XML action format is supported for the experiments pipeline.
 def init_env_client(env_name, env_addr, max_retries=3, action_format="react_xml"):
     # task_name - task dict
     envclient_classes = {
