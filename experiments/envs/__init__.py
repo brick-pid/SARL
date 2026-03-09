@@ -1,14 +1,14 @@
-from .academia import AcademiaEnvClient, AcademiaTask
-from .alfworld import AlfWorldEnvClient, AlfWorldTask, AlfWorldAdapter
-from .babyai import BabyAIEnvClient, BabyAITask
-from .lmrlgym import MazeEnvClient, MazeTask, WordleEnvClient, WordleTask
-from .movie import MovieEnvClient, MovieTask
-from .sciworld import SciworldEnvClient, SciworldTask, SciWorldAdapter
-from .sheet import SheetEnvClient, SheetTask
-from .sqlgym import SqlGymEnvClient, SqlGymTask
-from .textcraft import TextCraftEnvClient, TextCraftTask
-from .todo import TodoEnvClient, TodoTask
-from .weather import WeatherEnvClient, WeatherTask
-from .webarena import WebarenaEnvClient, WebarenaTask
-from .webshop import WebshopAdapter, WebshopEnvClient, WebshopTask
-from .searchqa import SearchQAEnvClient, SearchQATask
+from .academia import AcademiaEnvClient
+from .alfworld import AlfWorldEnvClient
+from .babyai import BabyAIEnvClient
+from .lmrlgym import MazeEnvClient, WordleEnvClient
+from .movie import MovieEnvClient
+from .sciworld import SciworldEnvClient
+from .sheet import SheetEnvClient
+from .sqlgym import SqlGymEnvClient
+from .textcraft import TextCraftEnvClient
+from .todo import TodoEnvClient
+from .weather import WeatherEnvClient
+from .webarena import WebarenaEnvClient
+from .webshop import WebshopEnvClient
+from .searchqa import SearchQAEnvClient
