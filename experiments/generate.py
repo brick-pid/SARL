@@ -4,6 +4,7 @@ Multi-turn, sub-agent generate function for Gym-style environments.
 
 from __future__ import annotations
 
+import asyncio
 import random
 import logging
 from copy import deepcopy
@@ -64,9 +65,9 @@ async def generate(args: Any, sample: Sample, sampling_params: dict, evaluation:
     subagent_samples: list[Sample] = []
 
     # --- Environment Init ---
-    env = init_env_client(env_name=data_source, env_addr=env_address)
-    env.reset(task_id)
-    obs = env.observe()
+    env = await asyncio.to_thread(init_env_client, env_name=data_source, env_addr=env_address)
+    await asyncio.to_thread(env.reset, task_id)
+    obs = await asyncio.to_thread(env.observe)
         
     done = False
     task = obs # use init obs as task description
@@ -138,7 +139,7 @@ async def generate(args: Any, sample: Sample, sampling_params: dict, evaluation:
             rewards.append(reward)
             turn += sub_turn
         elif parsed.type == "action":
-            step_output = env.step(parsed.content)
+            step_output = await asyncio.to_thread(env.step, parsed.content)
             obs, reward, done = step_output.state, step_output.reward, step_output.done
             rewards.append(reward)
             turn += 1
@@ -158,10 +159,7 @@ async def generate(args: Any, sample: Sample, sampling_params: dict, evaluation:
             sample.status = Sample.Status.COMPLETED
             break
 
-    try:
-        env.close()
-    except Exception as e:
-        print(f"Error during closing env: {e}")
+    await asyncio.to_thread(env.close)
     # --- Finalize main sample ---
     if data_source == 'sciworld':
         sample.reward = rewards[-1] / 100 if rewards and rewards[-1] > 0 else 0.0
@@ -262,7 +260,7 @@ async def subagent_generate(args: Any, parent_sample: Sample, task: str, subtask
             sub_sample.status = Sample.Status.COMPLETED
             break
         else:
-            step_output = env.step(parsed.content)
+            step_output = await asyncio.to_thread(env.step, parsed.content)
             obs, reward, done = step_output.state, step_output.reward, step_output.done
             rewards.append(reward)
             action_list.append(parsed.content)
