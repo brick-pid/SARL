@@ -12,5 +12,5 @@ cli:
   use_dynamic_global_batch_size: true
   balance_data: true
   sglang_server_concurrency: 32
-  start_rollout_id: 0
+  # start_rollout_id: 0
   debug_rollout_only: false
