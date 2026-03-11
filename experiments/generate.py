@@ -47,7 +47,8 @@ async def generate(args: Any, sample: Sample, sampling_params: dict, evaluation:
     env_nums = config["env_nums"]
     env_port = config["env_port_base"] + random.randint(0, env_nums-1)
     env_address = f"http://localhost:{env_port}"
-    enable_subagent = config["enable_subagent"]
+    training_stage = int(config.get("training_stage", 0))
+    enable_subagent = False if training_stage == 0 else True
 
     state = GenerateState(args)
     tokenizer = state.tokenizer
@@ -169,7 +170,7 @@ async def generate(args: Any, sample: Sample, sampling_params: dict, evaluation:
     logger.info(f"\033[32m#### reward: {sample.reward}, done: {sample.status}, turn: {turn}, token budget: {budget}\033[0m")
     sample.metadata["turn"] = turn
     main_sample = _finalize(sample, tokenizer, response_token_ids)
-    if evaluation:
+    if evaluation or training_stage in [0, 1]:
         main_sample.subagent_trajectories = [s.trajectory for s in subagent_samples]
         return main_sample
     all_samples = [main_sample] + subagent_samples
