@@ -78,7 +78,7 @@ class WebshopEnvClient(BaseEnvClient):
         return response
 
     def close(self):
-        pass  # Server has no /close endpoint; env pool is auto-recycled
+        self._post("close", {})
 
 class WebshopTask(BaseTask):
     env_client_cls = WebshopEnvClient
