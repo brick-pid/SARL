@@ -3,7 +3,7 @@ env_name: alfworld
 reward_process: experiments.rewards.post_process_rewards
 custom_config:
   training_stage: 2
-  reward_norm: sample_norm      # sample_norm | episode_norm
+  reward_norm: episode_norm      # sample_norm | episode_norm
   reward_augment: null           # null | pseudo_pos
   max_env_turns: 50
   max_subagent_turns: 10

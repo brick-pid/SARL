@@ -49,6 +49,7 @@ async def generate(args: Any, sample: Sample, sampling_params: dict, evaluation:
     env_address = f"http://localhost:{env_port}"
     training_stage = int(config.get("training_stage", 0))
     enable_subagent = False if training_stage == 0 else True
+    mask_subagent = True if training_stage == 1 else False
 
     state = GenerateState(args)
     tokenizer = state.tokenizer
@@ -170,11 +171,11 @@ async def generate(args: Any, sample: Sample, sampling_params: dict, evaluation:
     logger.info(f"\033[32m#### reward: {sample.reward}, done: {sample.status}, turn: {turn}, token budget: {budget}\033[0m")
     sample.metadata["turn"] = turn
     main_sample = _finalize(sample, tokenizer, response_token_ids)
-    if evaluation or training_stage in [0, 1]:
+    if evaluation or mask_subagent or not enable_subagent:
         main_sample.subagent_trajectories = [s.trajectory for s in subagent_samples]
         return main_sample
     all_samples = [main_sample] + subagent_samples
-    all_samples = _post_process(samples=all_samples, reward_strategy="simple")
+    all_samples = _post_process(samples=all_samples)
     return all_samples
 
 async def subagent_generate(args: Any, parent_sample: Sample, task: str, subtask: str,
@@ -295,18 +296,12 @@ async def subagent_generate(args: Any, parent_sample: Sample, task: str, subtask
 # Helpers
 # ---------------------------------------------------------------------------
 
-def _post_process(samples: List[Sample], reward_strategy: str = "simple"):
-    """
-    Reward Assignment Strategy
-    """
-    # ------ Simple Reward Strategy ------
-    if reward_strategy == "simple":
-        assert samples[0].metadata["role"] == "mainagent", "Assert the first sample come from main agent"
-        outcome_reward = samples[0].reward
-        for i in range(1, len(samples)):
-            samples[i].reward = outcome_reward
-    else:
-        raise NotImplementedError(f"Not support reward strategy: {reward_strategy}")
+def _post_process(samples: List[Sample]):
+    # set reward
+    assert samples[0].metadata["role"] == "mainagent", "Assert the first sample come from main agent"
+    outcome_reward = samples[0].reward
+    for i in range(1, len(samples)):
+        samples[i].reward = outcome_reward
     return samples
     
 

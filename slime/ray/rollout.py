@@ -393,6 +393,9 @@ class RolloutManager:
 
         return train_data
 
+    def update_custom_config(self, key, value):
+        self.args.custom_config[key] = value
+
     def set_train_parallel_config(self, config: dict):
         self.train_parallel_config = config
 
