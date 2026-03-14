@@ -16,6 +16,7 @@ from slime.utils.types import Sample
 
 # from .env import GymEnv
 from .utils import init_env_client
+from .envs.math_env import MathEnvClient
 from .prompts import render_system_prompt
 
 logger = logging.getLogger(__name__)
@@ -56,20 +57,27 @@ async def generate(args: Any, sample: Sample, sampling_params: dict, evaluation:
     url = f"http://{args.sglang_router_ip}:{args.sglang_router_port}/generate"
 
     # --- Prepare training setup ---
-    task_id = int(sample.prompt)  # --input-key task_id stores value here
     data_source = sample.metadata["data_source"]
 
     rewards: list[float] = []
     sampling_params = sampling_params.copy()
     sampling_params["no_stop_trim"] = True  # ChatML wrapping requires <|im_end|> in output
     sample.metadata["role"] = "mainagent"
-    sample.metadata["task_id"] = task_id
     subagent_samples: list[Sample] = []
 
     # --- Environment Init ---
-    env = await asyncio.to_thread(init_env_client, env_name=data_source, env_addr=env_address)
-    await asyncio.to_thread(env.reset, task_id)
-    obs = await asyncio.to_thread(env.observe)
+    if data_source == "math":
+        problem = sample.prompt[0]["content"] if isinstance(sample.prompt, list) else sample.prompt
+        label = sample.label
+        env = MathEnvClient(problem=problem, label=label)
+        obs = env.observe()
+        sample.metadata["task_id"] = None
+    else:
+        task_id = int(sample.prompt)  # --input-key task_id stores value here
+        sample.metadata["task_id"] = task_id
+        env = await asyncio.to_thread(init_env_client, env_name=data_source, env_addr=env_address)
+        await asyncio.to_thread(env.reset, task_id)
+        obs = await asyncio.to_thread(env.observe)
         
     done = False
     task = obs # use init obs as task description

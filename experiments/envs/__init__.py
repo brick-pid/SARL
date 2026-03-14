@@ -12,3 +12,4 @@ from .weather import WeatherEnvClient
 from .webarena import WebarenaEnvClient
 from .webshop import WebshopEnvClient
 from .searchqa import SearchQAEnvClient
+from .math_env import MathEnvClient
