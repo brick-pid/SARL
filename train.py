@@ -69,14 +69,6 @@ def train(args):
     # note that for async training, one can change the position of the sync operation(ray.get).
     stage_transitions = deque(args.custom_config.get("stage_transitions", []))
     for rollout_id in range(args.start_rollout_id, args.num_rollout):
-        # --- Stage transition check ---
-        while stage_transitions and rollout_id >= stage_transitions[0]:
-            stage_transitions.popleft()
-            new_stage = args.custom_config["training_stage"] + 1
-            logger.info(f"Stage transition: {args.custom_config['training_stage']} -> {new_stage} at rollout {rollout_id}")
-            ray.get(rollout_manager.update_custom_config.remote("training_stage", new_stage))
-            args.custom_config["training_stage"] = new_stage
-
         if args.eval_interval is not None and rollout_id == 0 and not args.skip_eval_before_train:
             ray.get(rollout_manager.eval.remote(rollout_id))
 

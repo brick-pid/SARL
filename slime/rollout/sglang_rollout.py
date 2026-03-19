@@ -99,6 +99,19 @@ class GenerateState(metaclass=SingletonMeta):
         self.remaining_batch_size += len(samples)
 
 
+def attach_rollout_id_to_samples(samples: list[list[Sample]] | list[Sample], rollout_id: int) -> None:
+    if not samples:
+        return
+
+    if isinstance(samples[0], list):
+        for group in samples:
+            for sample in group:
+                sample.metadata["rollout_id"] = rollout_id
+    else:
+        for sample in samples:
+            sample.metadata["rollout_id"] = rollout_id
+
+
 async def generate(args: Namespace, sample: Sample, sampling_params: dict[str, Any]) -> Sample:
     """Generate using traditional SGLang router with token-based workflow"""
     if args.ci_test:
@@ -364,6 +377,7 @@ async def generate_rollout_async(
         while state.remaining_batch_size < target_data_size:
             # get samples from the buffer and submit the generation requests.
             samples = data_source(args.over_sampling_batch_size)
+            attach_rollout_id_to_samples(samples, rollout_id)
             state.submit_generate_tasks(samples)
 
         # wait for the generation to finish
@@ -492,6 +506,7 @@ async def eval_rollout_single_dataset(
             sample.index = sample_index
             sample_index += 1
             sample.metadata = dataset_cfg.inject_metadata(getattr(sample, "metadata", None))
+            sample.metadata["rollout_id"] = rollout_id
             sample.generate_function_path = getattr(dataset_cfg, "custom_generate_function_path", None)
             sampling_params = base_sampling_params
             if getattr(args, "sglang_enable_deterministic_inference", False):
