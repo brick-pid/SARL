@@ -51,7 +51,6 @@ async def generate(args: Any, sample: Sample, sampling_params: dict, evaluation:
     step = compute_rollout_step(args, sample.metadata["rollout_id"])
     phase = _resolve_strategy_phase(config=config, step=step)
     enable_subagent = phase["enable_subagent"]
-    use_single_demo = phase["use_single_demo"]
     train_subagent = phase["train_subagent"]
 
     state = GenerateState(args)
@@ -64,39 +63,6 @@ async def generate(args: Any, sample: Sample, sampling_params: dict, evaluation:
     data_source = sample.metadata["data_source"]
     sample.metadata["role"] = "mainagent"
     sample.metadata["step"] = step
-
-    one_shot_demo = None
-    demo_reward = None
-    if use_single_demo:
-        demo_sample = deepcopy(sample)
-        demo_env, demo_init_obs = await _open_env_for_sample(
-            sample=demo_sample,
-            data_source=data_source,
-            env_address=env_address,
-        )
-        demo_task = demo_init_obs
-        demo_sample.metadata["task_desc"] = demo_task
-        try:
-            demo_result, _ = await run_main_loop(
-                args=args,
-                sample=demo_sample,
-                sampling_params=sampling_params,
-                tokenizer=tokenizer,
-                url=url,
-                env=demo_env,
-                task=demo_task,
-                init_obs=demo_init_obs,
-                data_source=data_source,
-                max_turn=max_turn,
-                max_subagent_turn=max_subagent_turn,
-                enable_subagent=False,
-                one_shot_demo=None,
-                step=step,
-            )
-        finally:
-            await asyncio.to_thread(demo_env.close)
-        one_shot_demo = demo_result.trajectory
-        demo_reward = demo_result.reward
 
     env, init_obs = await _open_env_for_sample(
         sample=sample,
@@ -120,14 +86,10 @@ async def generate(args: Any, sample: Sample, sampling_params: dict, evaluation:
             max_turn=max_turn,
             max_subagent_turn=max_subagent_turn,
             enable_subagent=enable_subagent,
-            one_shot_demo=one_shot_demo,
             step=step,
         )
     finally:
         await asyncio.to_thread(env.close)
-
-    if demo_reward is not None:
-        main_sample.metadata["single_demo_reward"] = demo_reward
 
     if evaluation or not train_subagent:
         main_sample.subagent_trajectories = [s.trajectory for s in subagent_samples]
@@ -151,25 +113,11 @@ async def run_main_loop(
     max_turn: int,
     max_subagent_turn: int,
     enable_subagent: bool,
-    one_shot_demo: str | None = None,
     step: int | None = None,
 ) -> tuple[Sample, list[Sample]]:
     mode = "main" if enable_subagent else "single"
     system_prompt = render_system_prompt(env_name=data_source, mode=mode, task=task)
     chat_messages = [{"role": "system", "content": system_prompt}]
-    if one_shot_demo:
-        chat_messages.append(
-            {
-                "role": "user",
-                "content": f"Here is a demonstration of a complete trajectory for a similar task:\n\n{one_shot_demo}",
-            }
-        )
-        chat_messages.append(
-            {
-                "role": "assistant",
-                "content": "I have studied the demonstration. I will use it as reference and apply a similar approach, delegating subtasks to my subagent.",
-            }
-        )
     chat_messages.append({"role": "user", "content": init_obs})
 
     prompt_ids = tokenizer.apply_chat_template(chat_messages, tokenize=True, add_generation_prompt=True)

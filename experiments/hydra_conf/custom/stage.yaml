@@ -6,16 +6,13 @@ custom_config:
     - until_step: 100
       name: single
       enable_subagent: false
-      use_single_demo: false
       train_subagent: false
     - until_step: 150
       name: mix
       enable_subagent: true
-      use_single_demo: true
       train_subagent: false
     - name: hierarchy
       enable_subagent: true
-      use_single_demo: false
       train_subagent: true
   reward_norm: episode_norm        # sample_norm | episode_norm
   reward_augment: null            # null | pseudo_pos

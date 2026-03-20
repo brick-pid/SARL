@@ -5,7 +5,6 @@ custom_config:
   strategy_schedule:
     - name: single
       enable_subagent: false
-      use_single_demo: false
       train_subagent: false
   reward_norm: sample_norm      # sample_norm | episode_norm
   reward_augment: null           # null | pseudo_pos

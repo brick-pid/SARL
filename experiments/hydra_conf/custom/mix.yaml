@@ -5,7 +5,6 @@ custom_config:
   strategy_schedule:
     - name: mix
       enable_subagent: true
-      use_single_demo: true
       train_subagent: false
   reward_norm: episode_norm        # sample_norm | episode_norm
   reward_augment: null             # null | pseudo_pos

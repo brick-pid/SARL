@@ -180,13 +180,13 @@ ENV_REGISTRY = {
 
 _MODE_TEMPLATE = {
     "single":   "single_system.j2",
-    "main":     "main_system.j2",
+    "main":     "main_system2.j2",
     "subagent": "subagent_system.j2",
 }
 
 _MATH_MODE_TEMPLATE = {
     "single":   "math_single_system.j2",
-    "main":     "math_main_system.j2",
+    "main":     "math_main_system2.j2",
     "subagent": "math_subagent_system.j2",
 }
 
