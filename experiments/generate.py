@@ -91,7 +91,7 @@ async def generate(args: Any, sample: Sample, sampling_params: dict, evaluation:
     finally:
         await asyncio.to_thread(env.close)
 
-    if evaluation or not train_subagent:
+    if evaluation or (not train_subagent and main_sample.reward != 1):
         main_sample.subagent_trajectories = [s.trajectory for s in subagent_samples]
         return main_sample
 
