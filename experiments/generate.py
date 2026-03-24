@@ -91,11 +91,15 @@ async def generate(args: Any, sample: Sample, sampling_params: dict, evaluation:
     finally:
         await asyncio.to_thread(env.close)
 
-    if evaluation or (not train_subagent and main_sample.reward != 1):
+    all_samples = [main_sample] + subagent_samples
+    if evaluation:
         main_sample.subagent_trajectories = [s.trajectory for s in subagent_samples]
         return main_sample
 
-    all_samples = [main_sample] + subagent_samples
+    if not train_subagent and main_sample.reward != 1:
+        for sample in all_samples[1:]:
+            sample.remove_sample = True
+
     return _post_process(samples=all_samples)
 
 
@@ -329,6 +333,9 @@ def _post_process(samples: List[Sample]):
     outcome_reward = samples[0].reward
     for i in range(1, len(samples)):
         samples[i].reward = outcome_reward
+    if outcome_reward == 1 and len(samples) > 1:
+        # mainagent get subagent bonus
+        samples[0].reward += 0.2
     return samples
 
 
