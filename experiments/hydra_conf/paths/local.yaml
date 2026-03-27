@@ -5,3 +5,4 @@ checkpoint_dir: ${paths.exp_dir}/checkpoints
 dump_dir: ${paths.repo_dir}/dump
 exp_name: ${custom.env_name}-${model.label}-${algo.name}-${custom.name}-${now:%Y-%m%d-%H%M%S}
 exp_dir: ${paths.repo_dir}/experiments/runs/${now:%Y%m%d}/${paths.exp_name}
+embed_path: ${model_path}/qwen3-embedding-0.6b
