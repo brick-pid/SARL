@@ -3,8 +3,8 @@ cli:
   input_key: task_id
   metadata_key: metadata
   rollout_shuffle: true
-  num_rollout: 3000
-  rollout_batch_size: 32
+  num_rollout: 300
+  rollout_batch_size: 16
   n_samples_per_prompt: 8
   rollout_max_context_len: 16384
   rollout_max_response_len: 2048
