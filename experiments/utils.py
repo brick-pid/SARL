@@ -265,3 +265,11 @@ def init_env_client(env_name, env_addr, max_retries=3, action_format="react_xml"
                 raise e
             time.sleep(5)
     return env_client
+
+def parse_last_xml(str, tag):
+    pattern = f"<{tag}>(.*?)</{tag}>"
+    matches = re.findall(pattern, str, re.DOTALL)
+    if matches:
+        return matches[-1].strip()
+    else:
+        return None
