@@ -171,7 +171,6 @@ ENV_REGISTRY = {
     "alfworld": {"desc": ALFWORLD_DESC, "actions": ALFWORLD_ACTIONS},
     "searchqa": {"desc": SEARCHQA_DESC, "actions": SEARCHQA_ACTIONS},
     "webarena": {"desc": WEBARENA_DESC, "actions": WEBARENA_ACTIONS},
-    "math":     {},  # math uses dedicated templates; no desc/actions needed
 }
 
 # ---------------------------------------------------------------------------
@@ -182,14 +181,8 @@ _MODE_TEMPLATE = {
     "single":   "single_system.j2",
     "main":     "main_system2.j2",
     "subagent": "subagent_system.j2",
+    "verifier": "verifier.j2",
 }
-
-_MATH_MODE_TEMPLATE = {
-    "single":   "math_single_system.j2",
-    "main":     "math_main_system2.j2",
-    "subagent": "math_subagent_system.j2",
-}
-
 
 def _validate_template_vars(template_name: str, context: dict[str, Any]) -> None:
     source, _, _ = _TEMPLATE_ENV.loader.get_source(_TEMPLATE_ENV, template_name)
@@ -209,27 +202,22 @@ def render_system_prompt(env_name: str, mode: str, task: str, subtask: str | Non
 
     Args:
         env_name: environment key in ENV_REGISTRY (e.g. "webshop")
-        mode: "single" | "main" | "subagent"
+        mode: "single" | "main" | "subagent" | "verifier"
         task: task description (initial observation)
         subtask: subtask description (required when mode="subagent")
     """
     if mode not in _MODE_TEMPLATE:
         raise ValueError(f"Unknown mode: {mode!r}. Expected one of {list(_MODE_TEMPLATE)}")
 
-    if env_name == "math":
-        template_name = _MATH_MODE_TEMPLATE[mode]
-        template = _TEMPLATE_ENV.get_template(template_name)
-        context = {"task": task, "subtask": subtask}
-    else:
-        reg = ENV_REGISTRY[env_name]
-        template_name = _MODE_TEMPLATE[mode]
-        template = _TEMPLATE_ENV.get_template(template_name)
-        context = {
-            "env_name": env_name,
-            "env_desc": reg["desc"],
-            "env_actions": reg["actions"],
-            "task": task,
-            "subtask": subtask,
-        }
+    reg = ENV_REGISTRY[env_name]
+    template_name = _MODE_TEMPLATE[mode]
+    template = _TEMPLATE_ENV.get_template(template_name)
+    context = {
+        "env_name": env_name,
+        "env_desc": reg["desc"],
+        "env_actions": reg["actions"],
+        "task": task,
+        "subtask": subtask,
+    }
     _validate_template_vars(template_name, context)
     return template.render(**context).strip()
