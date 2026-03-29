@@ -2,6 +2,7 @@ name: subagent
 env_name: alfworld
 reward_process: experiments.rewards.post_process_rewards
 custom_config:
+  generate: default # default, verify
   strategy_schedule:
     - name: hierarchy
       enable_subagent: true

@@ -32,7 +32,12 @@ def main(cfg: DictConfig) -> None:
     train_args.extend(_render_args(cfg.sglang.cli))
     train_args.extend(_render_args(cfg.misc.cli))
     train_args.extend(["--custom-config-path", custom_config_path])
-    train_args.extend(["--custom-generate-function-path", "experiments.generate.generate"])
+    if cfg.custom.custom_config.generate == "default":
+        train_args.extend(["--custom-generate-function-path", "experiments.generate.generate"])
+    elif cfg.custom.custom_config.generate == "verify":
+        train_args.extend(["--custom-generate-function-path", "experiments.generates.exp_verifier.generate"])
+    else:
+        raise NotImplementedError("[ERROR] generate function path error!")
     train_args.extend(["--custom-rollout-log-function-path", "experiments.utils.log_rollout_data"])
     train_args.extend(["--custom-eval-rollout-log-function-path", "experiments.utils.log_eval_rollout_data"])
     if reward_postprocess_path is not None: train_args.extend(["--custom-reward-post-process-path", reward_postprocess_path])
