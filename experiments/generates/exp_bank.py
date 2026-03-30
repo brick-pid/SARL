@@ -18,6 +18,10 @@ class Experience:
     obs_list: List[str]
 
     @property
+    def retrieval_text(self) -> str:
+        return self.task
+
+    @property
     def act_obs_traj(self) -> str:
         """
         task + (act + obs) * n
@@ -98,7 +102,7 @@ class ExperienceBank:
             metadata={"hnsw:space": "cosine"},
         )
         if self.experiences:
-            documents = [exp.act_obs_traj for exp in self.experiences]
+            documents = [exp.retrieval_text for exp in self.experiences]
             self._collection.add(
                 ids=[f"exp_{idx}" for idx in range(len(self.experiences))],
                 documents=documents,
@@ -111,7 +115,7 @@ class ExperienceBank:
 
         start_idx = len(self.experiences)
         self.experiences.extend(new_experiences)
-        documents = [exp.act_obs_traj for exp in new_experiences]
+        documents = [exp.retrieval_text for exp in new_experiences]
         self._collection.add(
             ids=[f"exp_{idx}" for idx in range(start_idx, len(self.experiences))],
             documents=documents,

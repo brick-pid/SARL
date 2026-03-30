@@ -218,7 +218,7 @@ async def run_subagent_loop(
     )
     sub_messages = [{"role": "system", "content": subagent_system_prompt}]
     main_traj = experience.act_obs_traj
-    retrieved_context = experience_bank.retrieve(main_traj)
+    retrieved_context = experience_bank.retrieve(task)
     user_prompt = (f"# Trajectory to be verified\n"
                    f"{main_traj}\n\n"
                    f"# Fewshot successful experience from experience bank\n"
