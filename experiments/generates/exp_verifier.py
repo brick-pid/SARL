@@ -10,9 +10,9 @@ from slime.utils.metric_utils import compute_rollout_step
 from slime.utils.types import Sample
 
 from ..envs.math_env import MathEnvClient
-from .exp_bank import Experience, ExperienceBank
+from .exp_bank import ExperienceBank, Experience
 from ..prompts import render_system_prompt
-from ..utils import init_env_client, parse_last_xml
+from ..utils import init_env_client, parse_last_xml, get_experience_bank
 
 logger = logging.getLogger(__name__)
 
@@ -22,20 +22,9 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 
 
-async def generate(args: Any, sample: Sample, sampling_params: dict, evaluation: bool = False, experience_bank: ExperienceBank | None = None) -> Sample | List[Sample]:
+async def generate(args: Any, sample: Sample, sampling_params: dict, evaluation: bool = False) -> Sample | List[Sample]:
     """
-    Multi-turn generate function for Gym-style environments.
-
-    Uses post() to call SGLang /generate endpoint.
-
-    Tracks tokens, loss_mask, and logprobs manually (TITO):
-      - Model-generated tokens: loss_mask=1, logprobs from SGLang
-      - Environment observation tokens: loss_mask=0, logprobs=0.0
-
-    When the model emits <subagent>task</subagent>, a subagent is spawned
-    to run a shorter agent loop on the env. The subagent's observation is
-    fed back to the main agent as an observation, and the subagent's Sample
-    is collected for training alongside the main agent's Sample.
+    multi-turn rollout function for one prompt with subagent verifier
     """
     # Prepare for rollout engine
     state = GenerateState(args)
@@ -46,6 +35,10 @@ async def generate(args: Any, sample: Sample, sampling_params: dict, evaluation:
 
     # Prepare for environment resources
     config = getattr(args, "custom_config")
+    step = compute_rollout_step(args, sample.metadata["rollout_id"])
+    enable_verify = _enable_verify(config, step)
+    print(f"[DEBUG] enable verify {enable_verify}")
+    experience_bank = get_experience_bank(config) if enable_verify else None
     max_turn = int(config["max_env_turns"])
     max_subagent_turn = int(config.get("max_subagent_turns", 10))
     env_nums = config["env_nums"]
@@ -81,6 +74,7 @@ async def generate(args: Any, sample: Sample, sampling_params: dict, evaluation:
             data_source=data_source,
             max_turn=max_turn,
             max_subagent_turn=max_subagent_turn,
+            enable_subagent=enable_verify,
             experience_bank=experience_bank,
         )
     finally:
@@ -107,9 +101,13 @@ async def run_main_loop(
     data_source: str,
     max_turn: int,
     max_subagent_turn: int,
+    enable_subagent: bool,
     experience_bank: ExperienceBank | None,
 ) -> tuple[Sample, list[Sample]]:
-    mode = "single"
+    if enable_subagent:
+        mode = "execution"
+    else:
+        mode = "single"
     system_prompt = render_system_prompt(env_name=data_source, mode=mode, task=task)
     chat_messages = [{"role": "system", "content": system_prompt}]
     chat_messages.append({"role": "user", "content": init_obs})
@@ -126,6 +124,7 @@ async def run_main_loop(
     obs_list: list[str] = []
     max_repeat = 3
     done = False
+    experience = Experience(task=task, action_list=[], obs_list=[])
 
     while True:
         resp_text, new_token_ids, new_log_probs = await _generate_one_turn(
@@ -143,7 +142,7 @@ async def run_main_loop(
             obs = env.invalid_action_obs
             done = False
             turn += 1  # avoid infinite loop if turn is not incremented
-        elif parsed.type == "subagent":
+        elif parsed.type == "subagent" and enable_subagent and experience_bank is not None:
             obs, reward, done, sub_sample, sub_turn = await run_subagent_loop(
                 args=args,
                 parent_sample=sample,
@@ -154,7 +153,7 @@ async def run_main_loop(
                 sampling_params=sampling_params,
                 max_turn=max_subagent_turn,
                 experience_bank=experience_bank,
-                execution_traj=build_act_obs_traj(task=task, action_list=action_list, obs_list=obs_list),
+                experience=experience,
             )
             subagent_samples.append(sub_sample)
             rewards.append(reward)
@@ -163,12 +162,11 @@ async def run_main_loop(
             obs, reward, done = step_output.state, step_output.reward, step_output.done
             rewards.append(reward)
             turn += 1
-            action_list.append(parsed.content)
-            if _should_stop_on_repeat(action_list, max_repeat):
+            experience.update(action=parsed.content, obs=obs)
+            if _should_stop_on_repeat(experience.action_list, max_repeat):
                 logger.info(f"Detected {max_repeat} repeated actions, terminating trajectory early")
                 sample.status = Sample.Status.COMPLETED
                 break
-            obs_list.append(obs)
         else:
             break
 
@@ -193,16 +191,9 @@ async def run_main_loop(
         sample.reward = rewards[-1] if rewards else 0.0
     sample.rewards = rewards
     sample.metadata["turn"] = turn
+    sample.metadata["experience"] = experience
     logger.info(f"\033[32m#### reward: {sample.reward}, done: {sample.status}, turn: {turn}, token budget: {budget}\033[0m")
     main_sample = _finalize(sample, tokenizer, response_token_ids)
-    _maybe_store_experience(
-        config=args.custom_config,
-        experience_bank=experience_bank,
-        task=task,
-        sample=main_sample,
-        action_list=action_list,
-        obs_list=obs_list,
-    )
     return main_sample, subagent_samples
 
 
@@ -217,19 +208,8 @@ async def run_subagent_loop(
     *,
     max_turn: int,
     experience_bank: ExperienceBank,
-    execution_traj: str = "",
+    experience: Experience,
 ) -> tuple[str, float, bool, Sample, int]:
-    """
-    Spawn a subagent verifier that runs a shorter agent loop on the same env.
-    The subagent will train with the main agent.
-
-    Returns:
-        obs: str to feed back into the main agent as observation
-        reward: reward collected by subagent, during interacting with env
-        done: whether the environment reached a terminal state
-        sample: subagent sample with full TITO data for training
-        turn: number of turns the subagent took
-    """
     # prepare for subagent loop
     subagent_system_prompt = render_system_prompt(
         env_name=parent_sample.metadata["data_source"],
@@ -237,9 +217,10 @@ async def run_subagent_loop(
         task=task,
     )
     sub_messages = [{"role": "system", "content": subagent_system_prompt}]
-    retrieved_context = experience_bank.retrieve(execution_traj)
+    main_traj = experience.act_obs_traj
+    retrieved_context = experience_bank.retrieve(main_traj)
     user_prompt = (f"# Trajectory to be verified\n"
-                   f"{execution_traj}\n\n"
+                   f"{main_traj}\n\n"
                    f"# Fewshot successful experience from experience bank\n"
                    f"{retrieved_context if retrieved_context else ''}\n")
     sub_messages.append({"role": "user", "content": user_prompt})
@@ -251,68 +232,19 @@ async def run_subagent_loop(
     sub_sample.metadata["role"] = "subagent"
 
     prompt_ids = tokenizer.apply_chat_template(sub_messages, tokenize=True, add_generation_prompt=True)
-    turn_pre, turn_post = _build_chat_turn_markers(tokenizer)
     response_token_ids = _init_sample_state(sub_sample, prompt_ids)
     budget = args.rollout_max_context_len - len(prompt_ids)
+    resp_text, new_token_ids, new_log_probs = await _generate_one_turn(
+        input_ids=sub_sample.tokens,
+        url=url,
+        sampling_params=sampling_params,
+        budget=budget,
+    )
+    _append_to_sample(sub_sample, response_token_ids, new_token_ids, new_log_probs, loss_mask_val=1)
 
-    obs = ""
-    rewards: list[float] = []
-    done = False
-
-    action_list: list[str] = []
-    obs_list: list[str] = []
-
-    turn = 0
-    while True:
-        turn += 1
-        resp_text, new_token_ids, new_log_probs = await _generate_one_turn(
-            input_ids=sub_sample.tokens,
-            url=url,
-            sampling_params=sampling_params,
-            budget=budget,
-        )
-        _append_to_sample(sub_sample, response_token_ids, new_token_ids, new_log_probs, loss_mask_val=1)
-        budget -= len(new_token_ids)
-
-        parsed = env.parse_response(resp_text)
-
-        if parsed.type == "action":
-            step_output = await asyncio.to_thread(env.step, parsed.content)
-            obs, reward, done = step_output.state, step_output.reward, step_output.done
-            rewards.append(reward)
-            action_list.append(parsed.content)
-            obs_list.append(obs)
-        else:
-            sub_sample.status = Sample.Status.COMPLETED
-            break
-
-        budget -= _append_observation_turn(
-            sample=sub_sample,
-            response_tokens=response_token_ids,
-            tokenizer=tokenizer,
-            turn_pre=turn_pre,
-            turn_post=turn_post,
-            obs=obs,
-        )
-        if budget <= 0:
-            sub_sample.status = Sample.Status.TRUNCATED
-            break
-        if turn >= max_turn or done:
-            sub_sample.status = Sample.Status.COMPLETED
-            break
-
-    # prepare feedback as obs
     feedback = parse_last_xml(resp_text, tag="feedback") or resp_text
-    act_obs = ""
-    for i in range(len(action_list)):
-        act_obs += f"{action_list[i]} -> {obs_list[i]}\n"
-    feedback += f"\nAction Execution during Verification\n{act_obs}"
-
-    # We don't set reward for subagent here. Currently, we use main agent
-    # outcome reward as subagent reward signal (reward_strategy="simple").
     finalized = _finalize(sub_sample, tokenizer, response_token_ids)
-    final_reward = rewards[-1] if rewards else 0.0
-    return feedback, final_reward, done, finalized, turn
+    return feedback, 0.0, False, finalized, 1
 
 
 # ---------------------------------------------------------------------------
@@ -416,35 +348,8 @@ def _finalize(sample: Sample, tokenizer, response_token_ids: list[int]) -> Sampl
         sample.status = Sample.Status.COMPLETED
     return sample
 
-def _maybe_store_experience(
-    *,
-    config: dict,
-    experience_bank: ExperienceBank | None,
-    task: str,
-    sample: Sample,
-    action_list: list[str],
-    obs_list: list[str],
-) -> None:
-    if experience_bank is None:
-        return
-
-    min_reward = float(config.get("exp_store_min_reward", 1.0))
-    if sample.reward < min_reward:
-        return
-
-    experience_bank.add(
-        Experience(
-            task=task,
-            action_list=list(action_list),
-            obs_list=list(obs_list),
-            reward=float(sample.reward),
-        )
-    )
-    experience_bank.save()
-
-def build_act_obs_traj(task: str, action_list: list[str], obs_list: list[str]) -> str:
-    action_obs_pairs = "\n".join(
-        f"Action: {a}\nObservation: {o}"
-        for a, o in zip(action_list, obs_list)
-    )
-    return f"{task}\n{action_obs_pairs}"
+def _enable_verify(config: dict, step: int | None) -> bool:
+    warmup_step = int(config.get("warmup_step", 30))
+    if step is None:
+        return True
+    return step >= warmup_step

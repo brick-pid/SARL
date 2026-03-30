@@ -14,6 +14,7 @@ import subprocess
 from collections.abc import Mapping
 from hydra.core.hydra_config import HydraConfig
 from omegaconf import DictConfig, OmegaConf
+from .generates.exp_bank import Experience, ExperienceBank
 
 # environments
 from contextlib import contextmanager
@@ -37,6 +38,8 @@ from .envs import (
     SearchQAEnvClient,
 )
 
+_EXPERIENCE_BANK: ExperienceBank | None = None
+
 def _is_success(value) -> int:
     if value is None:
         return 0
@@ -46,6 +49,14 @@ def _is_success(value) -> int:
 
 def log_rollout_data(rollout_id, args, samples, rollout_extra_metrics, rollout_time) -> bool:
     assert rollout_extra_metrics is not None
+    if args.custom_config['generate'] == "verify":
+        exp_bank = get_experience_bank(args.custom_config)
+        experiences = []
+        for s in samples:
+            if s.metadata["role"] == "mainagent" and s.reward == 1.0:
+                experiences.append(s.metadata["experience"])
+        # breakpoint()
+        exp_bank.add_experiences(experiences)
     success_count = 0
     subset_count = defaultdict(int)
     subset_success_count = defaultdict(int)
@@ -85,6 +96,17 @@ def log_rollout_data(rollout_id, args, samples, rollout_extra_metrics, rollout_t
 
     return False
 
+
+def get_experience_bank(config: dict) -> ExperienceBank | None:
+    global _EXPERIENCE_BANK
+
+    bank_dir = config.get("exp_dir")
+    if _EXPERIENCE_BANK is not None:
+        return _EXPERIENCE_BANK
+
+    bank = ExperienceBank(bank_dir)
+    _EXPERIENCE_BANK = bank
+    return bank
 
 def log_eval_rollout_data(rollout_id, args, data, extra_metrics) -> bool:
     assert extra_metrics is not None
