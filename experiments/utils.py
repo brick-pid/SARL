@@ -49,6 +49,7 @@ def _is_success(value) -> int:
 
 def log_rollout_data(rollout_id, args, samples, rollout_extra_metrics, rollout_time) -> bool:
     assert rollout_extra_metrics is not None
+    _save_train_rollout_trajectories(rollout_id, args, samples)
     if args.custom_config['generate'] == "verify":
         exp_bank = get_experience_bank(args.custom_config)
         experiences = []
@@ -95,6 +96,45 @@ def log_rollout_data(rollout_id, args, samples, rollout_extra_metrics, rollout_t
             rollout_extra_metrics[f"rollout/{subset}/turn/min"] = np.min(turns).item()
 
     return False
+
+
+def _save_train_rollout_trajectories(rollout_id, args, samples) -> None:
+    step = compute_rollout_step(args, rollout_id)
+    basedir = Path(args.custom_config["exp_dir"])
+    output_path = basedir / "rollouts_train" / f"train_{step}.txt"
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+
+    with open(output_path, "w", encoding="utf-8") as f:
+        for idx, sample in enumerate(samples):
+            if sample.metadata.get("role") != "mainagent":
+                continue
+            _write_sample_trajectory(f, idx, sample)
+
+
+def _write_sample_trajectory(f, sample_idx, sample) -> None:
+    f.write(f"sample_idx: {sample_idx}\n")
+    f.write("role: mainagent\n")
+    f.write(f"reward: {sample.reward}\n")
+    subset = sample.metadata.get("subset", sample.metadata.get("data_source"))
+    if subset is not None:
+        f.write(f"subset: {subset}\n")
+    if "task_desc" in sample.metadata:
+        f.write(f"task_desc: {sample.metadata['task_desc']}\n")
+
+    trajectory = str(getattr(sample, "trajectory", sample.response))
+    f.write(trajectory)
+    if not trajectory.endswith("\n"):
+        f.write("\n")
+
+    subagent_trajectories = getattr(sample, "subagent_trajectories", None) or []
+    for i, sub_traj in enumerate(subagent_trajectories):
+        f.write(f"### subagent trajectory {i}\n")
+        sub_traj = str(sub_traj)
+        f.write(sub_traj)
+        if not sub_traj.endswith("\n"):
+            f.write("\n")
+
+    f.write("\n==============\n")
 
 
 def get_experience_bank(config: dict) -> ExperienceBank | None:
@@ -160,19 +200,14 @@ def _log_helper(rollout_id, args, samples):
     basedir = Path(args.custom_config['exp_dir'])
     metric_path = basedir / "rollouts" / f"eval_{step}.metrics"
     for sample in samples:
+        if sample.metadata.get("role") != "mainagent":
+            continue
         subset = sample.metadata.get('subset', sample.metadata.get("data_source"))
         output_path = basedir / "rollouts" / f"eval{step}_{subset}"
         output_path.parent.mkdir(parents=True, exist_ok=True)
-        with open(output_path, "a") as f:
-            f.write(f"reward: {sample.reward}\n")
+        with open(output_path, "a", encoding="utf-8") as f:
             f.write(f"rewards: {sample.rewards}\n")
-            f.write(f"{sample.metadata.get('task_desc')}\n")
-            f.write(sample.trajectory)
-            if hasattr(sample, "subagent_trajectories"):
-                for i, sub_resp in enumerate(sample.subagent_trajectories):
-                    f.write(f"### subagent response {i}\n")
-                    f.write(sub_resp)
-            f.write("\n==============\n")
+            _write_sample_trajectory(f, sample.metadata.get("task_id", "unknown"), sample)
     
     with open(metric_path, "a") as f:
         rewards = []

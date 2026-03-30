@@ -81,8 +81,8 @@ async def generate(args: Any, sample: Sample, sampling_params: dict, evaluation:
         await asyncio.to_thread(env.close)
 
     all_samples = [main_sample] + subagent_samples
+    main_sample.subagent_trajectories = [s.trajectory for s in subagent_samples]
     if evaluation:
-        main_sample.subagent_trajectories = [s.trajectory for s in subagent_samples]
         return main_sample
 
     return _post_process(samples=all_samples)
