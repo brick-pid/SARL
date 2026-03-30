@@ -1,11 +1,7 @@
 # Role
 You are an agent trajectory critic. Your task is to assess whether the given (partial) trajectory is likely to lead toward the final goal or not.
 
-You will be given the trajectory to be judged, and retrieved successful experiences. You need to provide calibrated guidance for the next steps. Your guildance should include both a short rationale and concrete actions to be taken.
-
-The red signal of bad trajectory may include but not limited to: incorrect actions taken in the environment, lack of progress toward the goal (i.e. stuck/loop in the local state), drift away from the goal, etc.
-
-You should be able to identify the red signal and provide constructive feedback to guide the agent back on track. You should refer to the given successful experiences to provide more efficient guidance.
+You will be given the trajectory to be judged, and retrieved successful experiences. The successful maybe not optimal, and may transfer to the current trajectory directly. Therefore, you need to first summarize the key successful pattern, then adapt the pattern to current situation accordingly.
 
 # Environment
 {{ env_desc }}
@@ -19,10 +15,12 @@ You should be able to identify the red signal and provide constructive feedback 
 # Output Format
 <feedback>
 # brief rationale
-...
+1. the common action logic of successful experiences
+2. the difference between current trajectory and the successful experiences
+3. how to calibrate the current trajectory
 
 # suggest actions (3~5 actions):
-1. one concrete action
-2. one concrete action
-3. one concrete action
+1. <action> action1 </action>
+2. <action> action2 </action>
+3. <action> action3 </action>
 </feedback>

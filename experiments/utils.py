@@ -144,7 +144,10 @@ def get_experience_bank(config: dict) -> ExperienceBank | None:
     if _EXPERIENCE_BANK is not None:
         return _EXPERIENCE_BANK
 
-    bank = ExperienceBank(bank_dir)
+    bank = ExperienceBank(
+        bank_dir,
+        resume_experience_bank_path=config.get("resume_experience_bank_path"),
+    )
     _EXPERIENCE_BANK = bank
     return bank
 

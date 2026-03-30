@@ -4,6 +4,7 @@ reward_process: experiments.rewards.post_process_rewards
 custom_config:
   generate: verify # default, verify
   warmup_step: 30
+  resume_experience_bank_path: null
   train_subagent: true
   reward_norm: episode_norm      # sample_norm | episode_norm
   reward_augment: null           # null | pseudo_pos
@@ -12,4 +13,3 @@ custom_config:
   env_port_base: 36001
   env_nums: 32
   exp_dir: ${paths.exp_dir}
-

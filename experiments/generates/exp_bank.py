@@ -3,6 +3,7 @@ from __future__ import annotations
 import logging
 import os
 import pickle
+import shutil
 from dataclasses import dataclass
 from pathlib import Path
 from typing import List
@@ -62,13 +63,20 @@ class RemoteEmbeddingClient:
 class ExperienceBank:
     COLLECTION_NAME = "experiences"
 
-    def __init__(self, dir: str) -> None:
+    def __init__(self, dir: str, resume_experience_bank_path: str | None = None) -> None:
         self.dir = Path(dir)
         self.dir.mkdir(parents=True, exist_ok=True)
         self.storage_path = self.dir / "experience_bank.pkl"
         self._db_path = self.dir / "chroma"
         self._db_path.mkdir(parents=True, exist_ok=True)
         self._embedding_client = RemoteEmbeddingClient()
+
+        if resume_experience_bank_path is not None:
+            source_path = Path(resume_experience_bank_path)
+            if not source_path.is_file():
+                raise FileNotFoundError(f"resume_experience_bank_path does not exist: {source_path}")
+            shutil.copy2(source_path, self.storage_path)
+            logger.info("Copied experience bank from %s to %s", source_path, self.storage_path)
 
         self.experiences: list[Experience] = []
         if self.storage_path.exists():
