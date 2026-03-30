@@ -14,13 +14,16 @@ You will be given the trajectory to be judged, and retrieved successful experien
 
 # Output Format
 <feedback>
-# brief rationale
-1. the common action logic of successful experiences
-2. the difference between current trajectory and the successful experiences
-3. how to calibrate the current trajectory
+# brief analysis
+1. the logic execution procedure of successful experiences, i.e. act1->act2->...->actn
+2. the logic execution procedure of current trajectory, i.e. act1->act2->...->actm
+3. compare the two procedures, and summarize the failure point of current trajectory, i.e. the point where the current trajectory deviates from the successful pattern.
+4. based on current task environment, give the logic execution procedure to follow, i.e. act1->act2->...->actk, which is adapted from the successful pattern and suitable for current trajectory.
 
-# suggest actions (3~5 actions):
+# suggest actions (aournd 5 actions):
 1. <action> action1 </action>
 2. <action> action2 </action>
 3. <action> action3 </action>
+4. <action> action4 </action>
+5. <action> action5 </action>
 </feedback>
