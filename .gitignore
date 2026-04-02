@@ -199,3 +199,4 @@ models/
 tensorboard_log/
 experiments/rollouts/
 experiments/runs
+preliminary/
