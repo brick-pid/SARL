@@ -4,6 +4,7 @@ Utility functions for experiments.
 import logging
 import re
 import asyncio
+import json
 from collections import defaultdict
 from collections.abc import Mapping
 from dataclasses import dataclass
@@ -11,6 +12,7 @@ from pathlib import Path
 import shlex
 import subprocess
 
+import httpx
 import numpy as np
 import yaml
 from hydra.core.hydra_config import HydraConfig
@@ -19,7 +21,6 @@ from omegaconf import DictConfig, OmegaConf
 from .generates.exp_bank import Experience, ExperienceBank
 from .prompts import render_system_prompt
 from slime.rollout.sglang_rollout import GenerateState
-from slime.utils.http_utils import post
 from slime.utils.metric_utils import compute_rollout_step
 
 # environments
@@ -95,7 +96,14 @@ def _serialize_group_for_summary(group_samples) -> str:
     return "\n".join(lines).strip()
 
 
-def _summarize_group(args, group_samples) -> Experience:
+async def _summarize_group_async(
+    args,
+    client: httpx.AsyncClient,
+    semaphore: asyncio.Semaphore,
+    group_index,
+    group_samples,
+) -> Experience:
+    logger.info("Summarizing experience group %s with %s samples", group_index, len(group_samples))
     task = group_samples[0].metadata["task_desc"]
     env_name = group_samples[0].metadata["data_source"]
     instruction_prompt = render_system_prompt(env_name=env_name, mode="summarize", task=task)
@@ -116,7 +124,7 @@ def _summarize_group(args, group_samples) -> Experience:
     sampling_params = state.sampling_params.copy()
     sampling_params["temperature"] = 0.0
     sampling_params["top_p"] = 1.0
-    sampling_params["max_new_tokens"] = int(args.custom_config.get("summary_max_new_tokens", 1024))
+    sampling_params["max_new_tokens"] = int(args.custom_config.get("summary_max_new_tokens", 2048))
     sampling_params["no_stop_trim"] = True
     payload = {
         "input_ids": prompt_ids,
@@ -124,20 +132,67 @@ def _summarize_group(args, group_samples) -> Experience:
         "return_logprob": False,
     }
     url = f"http://{args.sglang_router_ip}:{args.sglang_router_port}/generate"
-    output = asyncio.run(post(url, payload))
+    max_retries = int(args.custom_config.get("summary_max_retries", 60))
+
+    async with semaphore:
+        retry_count = 0
+        while retry_count < max_retries:
+            response = None
+            try:
+                response = await client.post(url, json=payload or {})
+                response.raise_for_status()
+                content = await response.aread()
+                try:
+                    output = json.loads(content)
+                except json.JSONDecodeError:
+                    output = content.decode() if isinstance(content, bytes) else content
+                break
+            except Exception as e:
+                retry_count += 1
+                response_text = e.response.text if isinstance(e, httpx.HTTPStatusError) else None
+                logger.info(
+                    f"Error: {e}, retrying... (attempt {retry_count}/{max_retries}, url={url}, response={response_text})"
+                )
+                if retry_count >= max_retries:
+                    logger.info(f"Max retries ({max_retries}) reached, failing... (url={url})")
+                    raise
+                await asyncio.sleep(1)
+            finally:
+                if response is not None:
+                    await response.aclose()
     summary = output["text"].strip()
     if not summary:
         raise ValueError("Summarization output is empty")
     return Experience(task=task, summary=summary)
+
+
+async def _summarize_groups_async(args, summary_groups) -> list[Experience]:
+    if not summary_groups:
+        return []
+
+    concurrency = int(args.custom_config.get("summary_concurrency", len(summary_groups)))
+    concurrency = max(1, min(concurrency, len(summary_groups)))
+    max_connections = max(1, concurrency)
+    semaphore = asyncio.Semaphore(concurrency)
+
+    async with httpx.AsyncClient(
+        limits=httpx.Limits(max_connections=max_connections),
+        timeout=httpx.Timeout(None),
+    ) as client:
+        tasks = [
+            _summarize_group_async(args, client, semaphore, group_index, group_samples)
+            for group_index, group_samples in summary_groups
+        ]
+        return await asyncio.gather(*tasks)
+
+
 def log_rollout_data(rollout_id, args, samples, rollout_extra_metrics, rollout_time) -> bool:
     assert rollout_extra_metrics is not None
     _save_train_rollout_trajectories(rollout_id, args, samples)
     if args.custom_config['generate'] == "verify":
         exp_bank = get_experience_bank(args.custom_config)
-        experiences = []
-        for group_index, group_samples in _group_samples_for_summary(samples):
-            logger.info("Summarizing experience group %s with %s samples", group_index, len(group_samples))
-            experiences.append(_summarize_group(args, group_samples))
+        summary_groups = _group_samples_for_summary(samples)
+        experiences = asyncio.run(_summarize_groups_async(args, summary_groups))
         exp_bank.add_experiences(experiences)
     success_count = 0
     subset_count = defaultdict(int)
