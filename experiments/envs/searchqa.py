@@ -54,14 +54,16 @@ class SearchQAEnvClient(BaseEnvClient):
         return question
 
     def parse_response(self, response: str) -> ParseResult:
-        """Match <search>...</search>, <answer>...</answer> or <action>...</action> tags."""
-        pattern = r"<(search|answer|action)>(.*?)</\1>"
+        """Match SearchQA actions or main-agent subagent delegation tags."""
+        pattern = r"<(search|answer|action|subagent)>(.*?)</\1>"
         matches = list(re.finditer(pattern, response, re.DOTALL))
         if not matches:
             return ParseResult(type=None, content=response)
         m = matches[-1]
         tag = m.group(1)
         inner = m.group(2).strip()
+        if tag == "subagent":
+            return ParseResult(type="subagent", content=inner)
         return ParseResult(type="action", content=f"<{tag}>{inner}</{tag}>")
 
     @property
