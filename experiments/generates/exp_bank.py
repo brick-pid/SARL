@@ -40,8 +40,8 @@ class TrajectoryExperience:
         self.obs_list.append(obs)
 
 class RemoteEmbeddingClient:
-    DEFAULT_BASE_URL = "http://127.0.0.1:30001"
-    DEFAULT_TIMEOUT = 120
+    DEFAULT_BASE_URL = "http://127.0.0.1:37001"
+    DEFAULT_TIMEOUT = 180
 
     def __init__(self, base_url: str | None = None, timeout: int | None = None) -> None:
         self.base_url = (base_url or os.environ.get("EXPERIENCE_BANK_EMBEDDING_URL") or self.DEFAULT_BASE_URL).rstrip("/")

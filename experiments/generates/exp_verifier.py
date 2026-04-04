@@ -143,15 +143,13 @@ async def run_main_loop(
             done = False
             turn += 1  # avoid infinite loop if turn is not incremented
         elif parsed.type == "subagent" and enable_subagent and experience_bank is not None:
-            obs, reward, done, sub_sample, sub_turn = await run_subagent_loop(
+            obs, reward, done, sub_sample, sub_turn = await run_subagent(
                 args=args,
                 parent_sample=sample,
                 task=task,
-                env=env,
                 tokenizer=tokenizer,
                 url=url,
                 sampling_params=sampling_params,
-                max_turn=max_subagent_turn,
                 experience_bank=experience_bank,
                 experience=experience,
             )
@@ -197,16 +195,14 @@ async def run_main_loop(
     return main_sample, subagent_samples
 
 
-async def run_subagent_loop(
+async def run_subagent(
     args: Any,
     parent_sample: Sample,
     task: str,
-    env,
     tokenizer,
     url: str,
     sampling_params: dict,
     *,
-    max_turn: int,
     experience_bank: ExperienceBank,
     experience: TrajectoryExperience,
 ) -> tuple[str, float, bool, Sample, int]:
@@ -218,7 +214,7 @@ async def run_subagent_loop(
     )
     sub_messages = [{"role": "system", "content": subagent_system_prompt}]
     main_traj = experience.act_obs_traj
-    retrieved_context = experience_bank.retrieve(task)
+    retrieved_context = experience_bank.retrieve(task, top_k=3)
     user_prompt = (f"# Trajectory to be verified\n"
                    f"{main_traj}\n\n"
                    f"# Retrieved summarized experience patterns from experience bank\n"
@@ -242,7 +238,7 @@ async def run_subagent_loop(
     )
     _append_to_sample(sub_sample, response_token_ids, new_token_ids, new_log_probs, loss_mask_val=1)
 
-    feedback = parse_last_xml(resp_text, tag="feedback") or resp_text
+    feedback = resp_text
     finalized = _finalize(sub_sample, tokenizer, response_token_ids)
     return feedback, 0.0, False, finalized, 1
 

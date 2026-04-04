@@ -69,7 +69,7 @@ def _group_samples_for_summary(samples):
         tasks = {sample.metadata.get("task_desc") for sample in group_samples}
         assert len(tasks) == 1, f"group {group_index} contains inconsistent task_desc values: {tasks}"
         rewards = np.asarray([sample.reward for sample in group_samples], dtype=float)
-        if np.any(rewards == 1.0) and float(np.std(rewards)) > 0.0:
+        if np.any(rewards == 1.0):
             summary_groups.append((group_index, group_samples))
     return summary_groups
 
