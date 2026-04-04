@@ -14,24 +14,27 @@ logger = logging.getLogger(__name__)
 @dataclass
 class Experience:
     task: str
-    action_list: List[str]
-    obs_list: List[str]
+    summary: str
 
     @property
     def retrieval_text(self) -> str:
         return self.task
 
+
+@dataclass
+class TrajectoryExperience:
+    task: str
+    action_list: List[str]
+    obs_list: List[str]
+
     @property
     def act_obs_traj(self) -> str:
-        """
-        task + (act + obs) * n
-        """
         action_obs_pairs = "\n".join(
             f"Action: {a}\nObservation: {o}"
             for a, o in zip(self.action_list, self.obs_list)
         )
         return f"{self.task}\n{action_obs_pairs}"
-    
+
     def update(self, action: str, obs: str):
         self.action_list.append(action)
         self.obs_list.append(obs)
@@ -143,7 +146,7 @@ class ExperienceBank:
                 exps.append(self.experiences[idx])
 
         if return_str:
-            return "\n\n".join(exp.act_obs_traj for exp in exps)
+            return "\n\n".join(exp.summary for exp in exps)
         return exps
 
     def save(self) -> None:

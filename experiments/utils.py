@@ -1,20 +1,26 @@
 """
 Utility functions for experiments.
 """
+import logging
 import re
-import yaml
-import numpy as np
-from dataclasses import dataclass
+import asyncio
 from collections import defaultdict
+from collections.abc import Mapping
+from dataclasses import dataclass
 from pathlib import Path
-from slime.utils.metric_utils import compute_rollout_step
-
 import shlex
 import subprocess
-from collections.abc import Mapping
+
+import numpy as np
+import yaml
 from hydra.core.hydra_config import HydraConfig
 from omegaconf import DictConfig, OmegaConf
+
 from .generates.exp_bank import Experience, ExperienceBank
+from .prompts import render_system_prompt
+from slime.rollout.sglang_rollout import GenerateState
+from slime.utils.http_utils import post
+from slime.utils.metric_utils import compute_rollout_step
 
 # environments
 from contextlib import contextmanager
@@ -39,6 +45,7 @@ from .envs import (
 )
 
 _EXPERIENCE_BANK: ExperienceBank | None = None
+logger = logging.getLogger(__name__)
 
 def _is_success(value) -> int:
     if value is None:
@@ -47,16 +54,90 @@ def _is_success(value) -> int:
         return value in {1, 100}
     return 0
 
+
+def _group_samples_for_summary(samples):
+    grouped = defaultdict(list)
+    for sample in samples:
+        if sample.metadata.get("role") != "mainagent":
+            continue
+        assert sample.group_index is not None, "mainagent sample.group_index must not be None"
+        grouped[sample.group_index].append(sample)
+
+    summary_groups = []
+    for group_index, group_samples in grouped.items():
+        tasks = {sample.metadata.get("task_desc") for sample in group_samples}
+        assert len(tasks) == 1, f"group {group_index} contains inconsistent task_desc values: {tasks}"
+        rewards = np.asarray([sample.reward for sample in group_samples], dtype=float)
+        if np.any(rewards == 1.0) and float(np.std(rewards)) > 0.0:
+            summary_groups.append((group_index, group_samples))
+    return summary_groups
+
+
+def _serialize_group_for_summary(group_samples) -> str:
+    lines = []
+    for idx, sample in enumerate(group_samples, start=1):
+        trajectory_experience = sample.metadata.get("experience")
+        assert trajectory_experience is not None, "mainagent sample.metadata['experience'] must not be None"
+        lines.append(f"[trajectory_{idx}]")
+        lines.append(f"reward: {sample.reward}")
+        lines.append(f"task: {trajectory_experience.task}")
+        lines.append("actions:")
+        if trajectory_experience.action_list:
+            lines.extend(f"- {action}" for action in trajectory_experience.action_list)
+        else:
+            lines.append("- <empty>")
+        lines.append("observations:")
+        if trajectory_experience.obs_list:
+            lines.extend(f"- {obs}" for obs in trajectory_experience.obs_list)
+        else:
+            lines.append("- <empty>")
+        lines.append("")
+    return "\n".join(lines).strip()
+
+
+def _summarize_group(args, group_samples) -> Experience:
+    task = group_samples[0].metadata["task_desc"]
+    env_name = group_samples[0].metadata["data_source"]
+    instruction_prompt = render_system_prompt(env_name=env_name, mode="summarize", task=task)
+    user_message = (
+        "# Trajectory Group\n"
+        "Below are trajectories sampled from the same prompt group. Analyze them jointly.\n\n"
+        f"{_serialize_group_for_summary(group_samples)}"
+    )
+
+    state = GenerateState(args)
+    tokenizer = state.tokenizer
+    messages = [
+        {"role": "system", "content": instruction_prompt},
+        {"role": "user", "content": user_message},
+    ]
+    prompt_ids = tokenizer.apply_chat_template(messages, tokenize=True, add_generation_prompt=True)
+
+    sampling_params = state.sampling_params.copy()
+    sampling_params["temperature"] = 0.0
+    sampling_params["top_p"] = 1.0
+    sampling_params["max_new_tokens"] = int(args.custom_config.get("summary_max_new_tokens", 1024))
+    sampling_params["no_stop_trim"] = True
+    payload = {
+        "input_ids": prompt_ids,
+        "sampling_params": sampling_params,
+        "return_logprob": False,
+    }
+    url = f"http://{args.sglang_router_ip}:{args.sglang_router_port}/generate"
+    output = asyncio.run(post(url, payload))
+    summary = output["text"].strip()
+    if not summary:
+        raise ValueError("Summarization output is empty")
+    return Experience(task=task, summary=summary)
 def log_rollout_data(rollout_id, args, samples, rollout_extra_metrics, rollout_time) -> bool:
     assert rollout_extra_metrics is not None
     _save_train_rollout_trajectories(rollout_id, args, samples)
     if args.custom_config['generate'] == "verify":
         exp_bank = get_experience_bank(args.custom_config)
         experiences = []
-        for s in samples:
-            if s.metadata["role"] == "mainagent" and s.reward == 1.0:
-                experiences.append(s.metadata["experience"])
-        # breakpoint()
+        for group_index, group_samples in _group_samples_for_summary(samples):
+            logger.info("Summarizing experience group %s with %s samples", group_index, len(group_samples))
+            experiences.append(_summarize_group(args, group_samples))
         exp_bank.add_experiences(experiences)
     success_count = 0
     subset_count = defaultdict(int)

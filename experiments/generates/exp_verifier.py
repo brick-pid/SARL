@@ -10,7 +10,7 @@ from slime.utils.metric_utils import compute_rollout_step
 from slime.utils.types import Sample
 
 from ..envs.math_env import MathEnvClient
-from .exp_bank import ExperienceBank, Experience
+from .exp_bank import ExperienceBank, TrajectoryExperience
 from ..prompts import render_system_prompt
 from ..utils import init_env_client, parse_last_xml, get_experience_bank
 
@@ -124,7 +124,7 @@ async def run_main_loop(
     obs_list: list[str] = []
     max_repeat = 3
     done = False
-    experience = Experience(task=task, action_list=[], obs_list=[])
+    experience = TrajectoryExperience(task=task, action_list=[], obs_list=[])
 
     while True:
         resp_text, new_token_ids, new_log_probs = await _generate_one_turn(
@@ -208,7 +208,7 @@ async def run_subagent_loop(
     *,
     max_turn: int,
     experience_bank: ExperienceBank,
-    experience: Experience,
+    experience: TrajectoryExperience,
 ) -> tuple[str, float, bool, Sample, int]:
     # prepare for subagent loop
     subagent_system_prompt = render_system_prompt(
@@ -221,7 +221,7 @@ async def run_subagent_loop(
     retrieved_context = experience_bank.retrieve(task)
     user_prompt = (f"# Trajectory to be verified\n"
                    f"{main_traj}\n\n"
-                   f"# Fewshot successful experience from experience bank\n"
+                   f"# Retrieved summarized experience patterns from experience bank\n"
                    f"{retrieved_context if retrieved_context else ''}\n")
     sub_messages.append({"role": "user", "content": user_prompt})
 

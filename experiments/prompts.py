@@ -182,7 +182,8 @@ _MODE_TEMPLATE = {
     "main":     "main_system2.j2",
     "subagent": "subagent_system.j2",
     "verifier": "verifier.j2",
-    "execution": "execution.j2"
+    "execution": "execution.j2",
+    "summarize": "summarize.j2",
 }
 
 def _validate_template_vars(template_name: str, context: dict[str, Any]) -> None:
@@ -203,7 +204,7 @@ def render_system_prompt(env_name: str, mode: str, task: str, subtask: str | Non
 
     Args:
         env_name: environment key in ENV_REGISTRY (e.g. "webshop")
-        mode: "single" | "main" | "subagent" | "verifier" | "execution"
+        mode: "single" | "main" | "subagent" | "verifier" | "execution" | "summarize"
         task: task description (initial observation)
         subtask: subtask description (required when mode="subagent")
     """
