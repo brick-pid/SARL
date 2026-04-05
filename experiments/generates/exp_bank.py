@@ -35,7 +35,9 @@ class TrajectoryExperience:
         )
         return f"{self.task}\n{action_obs_pairs}"
 
-    def recent_act_obs_traj(self, recent_turns: int = 10) -> str:
+    @property
+    def recent_act_obs_traj(self) -> str:
+        recent_turns = 10
         all_actions = "\n".join(f"Action: {action}" for action in self.action_list) or "Action: <empty>"
         recent_pairs = "\n".join(
             f"Action: {action}\nObservation: {obs}"
