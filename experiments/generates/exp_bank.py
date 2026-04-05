@@ -35,6 +35,14 @@ class TrajectoryExperience:
         )
         return f"{self.task}\n{action_obs_pairs}"
 
+    def recent_act_obs_traj(self, recent_turns: int = 10) -> str:
+        all_actions = "\n".join(f"Action: {action}" for action in self.action_list) or "Action: <empty>"
+        recent_pairs = "\n".join(
+            f"Action: {action}\nObservation: {obs}"
+            for action, obs in zip(self.action_list[-recent_turns:], self.obs_list[-recent_turns:])
+        )
+        return f"{self.task}\n# All actions\n{all_actions}\n\n# Recent {recent_turns} turns\n{recent_pairs}"
+
     def update(self, action: str, obs: str):
         self.action_list.append(action)
         self.obs_list.append(obs)
