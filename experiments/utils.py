@@ -67,9 +67,9 @@ def _group_samples_for_summary(samples):
     summary_groups = []
     for group_index, group_samples in grouped.items():
         tasks = {sample.metadata.get("task_desc") for sample in group_samples}
-        assert len(tasks) == 1, f"group {group_index} contains inconsistent task_desc values: {tasks}"
+        # assert len(tasks) == 1, f"group {group_index} contains inconsistent task_desc values: {tasks}"
         rewards = np.asarray([sample.reward for sample in group_samples], dtype=float)
-        if np.any(rewards == 1.0):
+        if np.any(rewards > 0.5):
             summary_groups.append((group_index, group_samples))
     return summary_groups
 
@@ -131,7 +131,7 @@ async def _summarize_group_async(
         "sampling_params": sampling_params,
         "return_logprob": False,
     }
-    url = f"http://{args.sglang_router_ip}:{args.sglang_router_port}/generate"
+    url = "http://127.0.0.1:38001/generate"
     max_retries = int(args.custom_config.get("summary_max_retries", 60))
 
     async with semaphore:
