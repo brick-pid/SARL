@@ -161,8 +161,6 @@ async def run_main_loop(
             obs, reward, done = step_output.state, step_output.reward, step_output.done
             rewards.append(reward)
             turn += 1
-            if data_source == "searchqa" and enable_subagent and turn % 10:
-                obs += "\n# I should now invoke the verifier agent to check my execution, with <subagent> verify and calibrate by current execution </subagent>"
             experience.update(action=parsed.content, obs=obs)
             if _should_stop_on_repeat(experience.action_list, max_repeat):
                 logger.info(f"Detected {max_repeat} repeated actions, terminating trajectory early")
@@ -236,7 +234,7 @@ async def run_subagent(
     )
     sub_messages = [{"role": "system", "content": subagent_system_prompt}]
     main_traj = experience.recent_act_obs_traj if parent_sample.metadata["data_source"] in ["webshop", "searchqa"] else experience.act_obs_traj
-    retrieved_context = experience_bank.retrieve(task, top_k=5)
+    retrieved_context = experience_bank.retrieve(task, top_k=5)[:28000]
     user_prompt = (f"# Trajectory to be verified\n"
                    f"{main_traj}\n\n"
                    f"# Retrieved summarized experience patterns from experience bank\n"
@@ -251,7 +249,7 @@ async def run_subagent(
 
     prompt_ids = tokenizer.apply_chat_template(sub_messages, tokenize=True, add_generation_prompt=True)
     response_token_ids = _init_sample_state(sub_sample, prompt_ids)
-    budget = args.rollout_max_context_len - len(prompt_ids)
+    budget = 2048
     resp_text, new_token_ids, new_log_probs = await _generate_one_turn(
         input_ids=sub_sample.tokens,
         url=url,
