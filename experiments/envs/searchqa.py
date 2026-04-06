@@ -74,10 +74,11 @@ class SearchQAEnvClient(BaseEnvClient):
 
     def step(self, action: str) -> StepOutput:
         response = self._post("step", {"action": action})
+        is_answer_action = bool(re.search(r"<answer>.*?</answer>", action, re.DOTALL))
         return StepOutput(
             state=response["observation"],
             reward=response["reward"],
-            done=response["done"],
+            done=response["done"] or is_answer_action,
         )
 
     def reset(self, id: int) -> Dict[str, Any]:
