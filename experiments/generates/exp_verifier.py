@@ -236,7 +236,7 @@ async def run_subagent(
     )
     sub_messages = [{"role": "system", "content": subagent_system_prompt}]
     main_traj = experience.recent_act_obs_traj if parent_sample.metadata["data_source"] in ["webshop", "searchqa"] else experience.act_obs_traj
-    retrieved_context = experience_bank.retrieve(task, top_k=3)
+    retrieved_context = experience_bank.retrieve(task, top_k=5)
     user_prompt = (f"# Trajectory to be verified\n"
                    f"{main_traj}\n\n"
                    f"# Retrieved summarized experience patterns from experience bank\n"
