@@ -155,11 +155,14 @@ async def run_main_loop(
             )
             subagent_samples.append(sub_sample)
             rewards.append(reward)
+            turn += 1
         elif parsed.type == "action":
             step_output = await asyncio.to_thread(env.step, parsed.content)
             obs, reward, done = step_output.state, step_output.reward, step_output.done
             rewards.append(reward)
             turn += 1
+            if data_source == "searchqa" and enable_subagent and turn % 10:
+                obs += "\n# I should now invoke the verifier agent to check my execution, with <subagent> verify and calibrate by current execution </subagent>"
             experience.update(action=parsed.content, obs=obs)
             if _should_stop_on_repeat(experience.action_list, max_repeat):
                 logger.info(f"Detected {max_repeat} repeated actions, terminating trajectory early")
@@ -213,7 +216,7 @@ async def run_subagent(
         task=task,
     )
     sub_messages = [{"role": "system", "content": subagent_system_prompt}]
-    main_traj = experience.recent_act_obs_traj() if parent_sample.metadata["data_source"] in ["webshop", "searchqa"] else experience.act_obs_traj
+    main_traj = experience.recent_act_obs_traj if parent_sample.metadata["data_source"] in ["webshop", "searchqa"] else experience.act_obs_traj
     retrieved_context = experience_bank.retrieve(task, top_k=3)
     user_prompt = (f"# Trajectory to be verified\n"
                    f"{main_traj}\n\n"
