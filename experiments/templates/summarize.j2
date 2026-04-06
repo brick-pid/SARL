@@ -16,6 +16,7 @@ You are an trajectory analysis agent. Your task is to compare the given trajecto
 2. Successful Pattern
     - key actions: the shared key actions across all successful trajectories, which is the successful pattern, remove any redundant or less important actions.
     - success point: the shared key points which are critical for completing the task successfully.
+    - if no successful trajectory (i.e. reward == 1), skip this section.
 3. Failure Pattern:
     - failure point: the point where the trajectory deviates from the successful pattern, which leads to the failure.
         - how to fix: how to fix the failure point
