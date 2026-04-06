@@ -79,19 +79,15 @@ def _serialize_group_for_summary(group_samples) -> str:
     for idx, sample in enumerate(group_samples, start=1):
         trajectory_experience = sample.metadata.get("experience")
         assert trajectory_experience is not None, "mainagent sample.metadata['experience'] must not be None"
+        data_source = sample.metadata.get("data_source")
+        trajectory_text = (
+            trajectory_experience.recent_act_obs_traj
+            if data_source in ["webshop", "searchqa"]
+            else trajectory_experience.act_obs_traj
+        )
         lines.append(f"[trajectory_{idx}]")
         lines.append(f"reward: {sample.reward}")
-        lines.append(f"task: {trajectory_experience.task}")
-        lines.append("actions:")
-        if trajectory_experience.action_list:
-            lines.extend(f"- {action}" for action in trajectory_experience.action_list)
-        else:
-            lines.append("- <empty>")
-        lines.append("observations:")
-        if trajectory_experience.obs_list:
-            lines.extend(f"- {obs}" for obs in trajectory_experience.obs_list)
-        else:
-            lines.append("- <empty>")
+        lines.append(trajectory_text)
         lines.append("")
     return "\n".join(lines).strip()
 
@@ -102,7 +98,7 @@ async def _summarize_group_async(
     semaphore: asyncio.Semaphore,
     group_index,
     group_samples,
-) -> Experience:
+) -> Experience | None:
     logger.info("Summarizing experience group %s with %s samples", group_index, len(group_samples))
     task = group_samples[0].metadata["task_desc"]
     env_name = group_samples[0].metadata["data_source"]
@@ -120,6 +116,16 @@ async def _summarize_group_async(
         {"role": "user", "content": user_message},
     ]
     prompt_ids = tokenizer.apply_chat_template(messages, tokenize=True, add_generation_prompt=True)
+    if len(prompt_ids) > 32768:
+        logger.warning(
+            "Skipping experience summary for group %s in %s because prompt length %s exceeds limit %s. task=%r",
+            group_index,
+            env_name,
+            len(prompt_ids),
+            32768,
+            task,
+        )
+        return None
 
     sampling_params = state.sampling_params.copy()
     sampling_params["temperature"] = 0.0
@@ -183,7 +189,8 @@ async def _summarize_groups_async(args, summary_groups) -> list[Experience]:
             _summarize_group_async(args, client, semaphore, group_index, group_samples)
             for group_index, group_samples in summary_groups
         ]
-        return await asyncio.gather(*tasks)
+        results = await asyncio.gather(*tasks)
+        return [exp for exp in results if exp is not None]
 
 
 def log_rollout_data(rollout_id, args, samples, rollout_extra_metrics, rollout_time) -> bool:
