@@ -48,12 +48,15 @@ from .envs import (
 _EXPERIENCE_BANK: ExperienceBank | None = None
 logger = logging.getLogger(__name__)
 
-def _is_success(value) -> int:
-    if value is None:
-        return 0
-    if isinstance(value, (int, float)):
-        return value in {1, 100}
-    return 0
+def _get_outcome_reward(sample) -> float | None:
+    if sample.outcome_reward is not None:
+        return sample.outcome_reward
+    return sample.reward
+
+
+def _is_success(sample) -> int:
+    value = _get_outcome_reward(sample)
+    return int(value == 1.0) if value is not None else 0
 
 
 def _group_samples_for_summary(samples):
@@ -68,7 +71,7 @@ def _group_samples_for_summary(samples):
     for group_index, group_samples in grouped.items():
         tasks = {sample.metadata.get("task_desc") for sample in group_samples}
         # assert len(tasks) == 1, f"group {group_index} contains inconsistent task_desc values: {tasks}"
-        rewards = np.asarray([sample.reward for sample in group_samples], dtype=float)
+        rewards = np.asarray([_get_outcome_reward(sample) or 0.0 for sample in group_samples], dtype=float)
         if np.any(rewards > 0.5):
             summary_groups.append((group_index, group_samples))
     return summary_groups
@@ -86,7 +89,7 @@ def _serialize_group_for_summary(group_samples) -> str:
             else trajectory_experience.act_obs_traj
         )
         lines.append(f"[trajectory_{idx}]")
-        lines.append(f"reward: {sample.reward}")
+        lines.append(f"reward: {_get_outcome_reward(sample)}")
         lines.append(trajectory_text)
         lines.append("")
     return "\n".join(lines).strip()
@@ -205,7 +208,7 @@ def log_rollout_data(rollout_id, args, samples, rollout_extra_metrics, rollout_t
     subset_count = defaultdict(int)
     subset_success_count = defaultdict(int)
     for sample in samples:
-        success = _is_success(sample.reward)
+        success = _is_success(sample)
         success_count += success
         # subset
         subset = sample.metadata.get('subset', sample.metadata.get("data_source"))
@@ -257,7 +260,10 @@ def _save_train_rollout_trajectories(rollout_id, args, samples) -> None:
 def _write_sample_trajectory(f, sample_idx, sample) -> None:
     f.write(f"sample_idx: {sample_idx}\n")
     f.write("role: mainagent\n")
+    f.write(f"outcome_reward: {_get_outcome_reward(sample)}\n")
+    f.write(f"subagent_bonus: {sample.subagent_bonus}\n")
     f.write(f"reward: {sample.reward}\n")
+    f.write(f"subagent_count: {sample.metadata.get('subagent_count')}\n")
     subset = sample.metadata.get("subset", sample.metadata.get("data_source"))
     if subset is not None:
         f.write(f"subset: {subset}\n")
@@ -302,7 +308,7 @@ def log_eval_rollout_data(rollout_id, args, data, extra_metrics) -> bool:
         subset_count = defaultdict(int)
         subset_success_count = defaultdict(int)
         for sample in samples:
-            success = _is_success(sample.reward)
+            success = _is_success(sample)
             success_count += success
             # subset
             subset = sample.metadata.get('subset', sample.metadata.get("data_source"))

@@ -120,11 +120,10 @@ async def run_main_loop(
     turn = 0
     rewards: list[float] = []
     subagent_samples: list[Sample] = []
-    action_list: list[str] = []
-    obs_list: list[str] = []
     max_repeat = 3
     done = False
     experience = TrajectoryExperience(task=task, action_list=[], obs_list=[])
+    subagent_count = 0
 
     while True:
         resp_text, new_token_ids, new_log_probs = await _generate_one_turn(
@@ -155,6 +154,7 @@ async def run_main_loop(
             )
             subagent_samples.append(sub_sample)
             rewards.append(reward)
+            subagent_count += 1
             turn += 1
         elif parsed.type == "action":
             step_output = await asyncio.to_thread(env.step, parsed.content)
@@ -187,13 +187,32 @@ async def run_main_loop(
             break
 
     if data_source == "sciworld":
-        sample.reward = rewards[-1] / 100 if rewards and rewards[-1] > 0 else 0.0
+        outcome_reward = rewards[-1] / 100 if rewards and rewards[-1] > 0 else 0.0
     else:
-        sample.reward = rewards[-1] if rewards else 0.0
+        outcome_reward = rewards[-1] if rewards else 0.0
+    if subagent_count == 0:
+        subagent_bonus = 0.0
+    elif subagent_count <= 5:
+        subagent_bonus = 0.1
+    else:
+        subagent_bonus = -0.1
+    sample.outcome_reward = outcome_reward
+    sample.subagent_bonus = subagent_bonus
+    sample.reward = outcome_reward + subagent_bonus
     sample.rewards = rewards
     sample.metadata["turn"] = turn
+    sample.metadata["subagent_count"] = subagent_count
     sample.metadata["experience"] = experience
-    logger.info(f"\033[32m#### reward: {sample.reward}, done: {sample.status}, turn: {turn}, token budget: {budget}\033[0m")
+    logger.info(
+        "\033[32m#### outcome_reward: %s, subagent_bonus: %s, reward: %s, done: %s, turn: %s, subagent_count: %s, token budget: %s\033[0m",
+        sample.outcome_reward,
+        sample.subagent_bonus,
+        sample.reward,
+        sample.status,
+        turn,
+        subagent_count,
+        budget,
+    )
     main_sample = _finalize(sample, tokenizer, response_token_ids)
     return main_sample, subagent_samples
 
@@ -253,9 +272,12 @@ async def run_subagent(
 def _post_process(samples: List[Sample]):
     # set reward
     assert samples[0].metadata["role"] == "mainagent", "Assert the first sample come from main agent"
-    outcome_reward = samples[0].reward
+    outcome_reward = samples[0].outcome_reward
+    subagent_bonus = samples[0].subagent_bonus
     for i in range(1, len(samples)):
         samples[i].reward = outcome_reward
+        samples[i].outcome_reward = outcome_reward
+        samples[i].subagent_bonus = subagent_bonus
     return samples
 
 async def _open_env_for_sample(sample: Sample, data_source: str, env_address: str):
