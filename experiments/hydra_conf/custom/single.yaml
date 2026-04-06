@@ -2,6 +2,7 @@ name: single
 env_name: alfworld
 reward_process: experiments.rewards.post_process_rewards # use null to disable custom reward post-processing
 custom_config:
+  generate: default # default, verify
   strategy_schedule:
     - name: single
       enable_subagent: false
