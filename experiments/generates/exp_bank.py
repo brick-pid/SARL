@@ -62,37 +62,27 @@ class RemoteEmbeddingClient:
         self._session.trust_env = False
         self._cache: dict[str, list[float]] = {}
 
-    def embed(self, texts: list[str], is_query: bool = False) -> list[list[float]]:
+    def embed(self, texts: list[str]) -> list[list[float]]:
         if not texts:
             return []
 
-        if is_query:
-            uncached_texts = [text for text in texts if text not in self._cache]
-            texts_to_encode = uncached_texts
-        else:
-            texts_to_encode = texts
-
-        if texts_to_encode:
+        uncached_texts = [text for text in texts if text not in self._cache]
+        if uncached_texts:
             response = self._session.post(
                 f"{self.base_url}/encode",
-                json={"text": texts_to_encode},
+                json={"text": uncached_texts},
                 timeout=self.timeout,
             )
             response.raise_for_status()
             payload = response.json()
             if not isinstance(payload, list):
                 raise ValueError(f"Unexpected embedding response payload: {type(payload)!r}")
-            if len(payload) != len(texts_to_encode):
+            if len(payload) != len(uncached_texts):
                 raise ValueError(
-                    f"Unexpected embedding response length: expected {len(texts_to_encode)}, got {len(payload)}"
+                    f"Unexpected embedding response length: expected {len(uncached_texts)}, got {len(payload)}"
                 )
-            if is_query:
-                for text, item in zip(texts_to_encode, payload):
-                    self._cache[text] = item["embedding"]
-                return [self._cache[text] for text in texts]
-            else:
-                return [item["embedding"] for item in payload]
-
+            for text, item in zip(uncached_texts, payload):
+                self._cache[text] = item["embedding"]
         return [self._cache[text] for text in texts]
 
 
@@ -162,7 +152,7 @@ class ExperienceBank:
 
         try:
             results = self._collection.query(
-                query_embeddings=self._embedding_client.embed([query], is_query=True),
+                query_embeddings=self._embedding_client.embed([query]),
                 n_results=min(top_k, len(self.experiences)),
             )
         except Exception:
