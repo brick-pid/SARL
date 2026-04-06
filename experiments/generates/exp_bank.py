@@ -60,21 +60,30 @@ class RemoteEmbeddingClient:
 
         self._session = requests.Session()
         self._session.trust_env = False
+        self._cache: dict[str, list[float]] = {}
 
     def embed(self, texts: list[str]) -> list[list[float]]:
         if not texts:
             return []
 
-        response = self._session.post(
-            f"{self.base_url}/encode",
-            json={"text": texts},
-            timeout=self.timeout,
-        )
-        response.raise_for_status()
-        payload = response.json()
-        if not isinstance(payload, list):
-            raise ValueError(f"Unexpected embedding response payload: {type(payload)!r}")
-        return [item["embedding"] for item in payload]
+        uncached_texts = [text for text in texts if text not in self._cache]
+        if uncached_texts:
+            response = self._session.post(
+                f"{self.base_url}/encode",
+                json={"text": uncached_texts},
+                timeout=self.timeout,
+            )
+            response.raise_for_status()
+            payload = response.json()
+            if not isinstance(payload, list):
+                raise ValueError(f"Unexpected embedding response payload: {type(payload)!r}")
+            if len(payload) != len(uncached_texts):
+                raise ValueError(
+                    f"Unexpected embedding response length: expected {len(uncached_texts)}, got {len(payload)}"
+                )
+            for text, item in zip(uncached_texts, payload):
+                self._cache[text] = item["embedding"]
+        return [self._cache[text] for text in texts]
 
 
 class ExperienceBank:
@@ -141,10 +150,14 @@ class ExperienceBank:
         if top_k <= 0 or not self.experiences:
             return "" if return_str else []
 
-        results = self._collection.query(
-            query_embeddings=self._embedding_client.embed([query]),
-            n_results=min(top_k, len(self.experiences)),
-        )
+        try:
+            results = self._collection.query(
+                query_embeddings=self._embedding_client.embed([query]),
+                n_results=min(top_k, len(self.experiences)),
+            )
+        except Exception:
+            logger.exception("Experience retrieval failed for query: %s", query)
+            return "" if return_str else []
         exps = []
         for exp_id in results.get("ids", [[]])[0]:
             assert exp_id.startswith("exp_"), "Unexpected experience ID format: {exp_id}"
