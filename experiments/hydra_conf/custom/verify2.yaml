@@ -1,8 +1,8 @@
-name: verify
+name: verify2
 env_name: alfworld
 reward_process: experiments.rewards.post_process_rewards
 custom_config:
-  generate: verify # default, verify, verify2
+  generate: verify2 # [default, verify]
   warmup_step: 5
   resume_experience_bank_path: null
   train_subagent: true

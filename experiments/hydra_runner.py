@@ -36,6 +36,8 @@ def main(cfg: DictConfig) -> None:
         train_args.extend(["--custom-generate-function-path", "experiments.generate.generate"])
     elif cfg.custom.custom_config.generate == "verify":
         train_args.extend(["--custom-generate-function-path", "experiments.generates.exp_verifier.generate"])
+    elif cfg.custom.custom_config.generate == "verify2":
+        train_args.extend(["--custom-generate-function-path", "experiments.generates_v2.exp_verifier.generate"])
     else:
         raise NotImplementedError("[ERROR] generate function path error!")
     train_args.extend(["--custom-rollout-log-function-path", "experiments.utils.log_rollout_data"])
