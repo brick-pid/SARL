@@ -46,19 +46,17 @@ class RemoteEmbeddingClient:
     def __init__(self, base_url: str | None = None, timeout: int | None = None) -> None:
         self.base_url = (base_url or os.environ.get("EXPERIENCE_BANK_EMBEDDING_URL") or self.DEFAULT_BASE_URL).rstrip("/")
         self.timeout = timeout or int(os.environ.get("EXPERIENCE_BANK_EMBEDDING_TIMEOUT", self.DEFAULT_TIMEOUT))
-        import requests
-
-        self._session = requests.Session()
-        self._session.trust_env = False
         self._cache: dict[str, list[float]] = {}
 
     def embed(self, texts: list[str]) -> list[list[float]]:
         if not texts:
             return []
 
+        import requests
+
         uncached_texts = [text for text in texts if text not in self._cache]
         if uncached_texts:
-            response = self._session.post(
+            response = requests.post(
                 f"{self.base_url}/encode",
                 json={"text": uncached_texts},
                 timeout=self.timeout,
