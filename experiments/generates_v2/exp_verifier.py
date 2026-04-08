@@ -88,7 +88,10 @@ async def generate(args: Any, sample: Sample, sampling_params: dict, evaluation:
     experience = main_sample.metadata.get("experience")
     if experience is not None:
         experience.reward = _get_outcome_reward(main_sample)
-        experience_bank.add_experience(experience)
+        try:
+            await asyncio.to_thread(experience_bank.add_experience, experience)
+        except Exception:
+            logger.exception("Failed to add experience to bank, skipping")
 
     return _post_process(samples=all_samples)
 
@@ -238,7 +241,11 @@ async def run_subagent(
     )
     sub_messages = [{"role": "system", "content": subagent_system_prompt}]
     main_traj = experience.act_obs_traj
-    retrieved_context = experience_bank.retrieve(task, top_k=10)[:28000]
+    try:
+        retrieved_context = (await asyncio.to_thread(experience_bank.retrieve, task, 10))[:28000]
+    except Exception:
+        logger.exception("Failed to retrieve from experience bank, using empty context")
+        retrieved_context = ""
     user_prompt = (f"# Trajectory to be verified\n"
                    f"{main_traj}\n\n"
                    f"# Retrieved summarized experience patterns from experience bank\n"

@@ -4,6 +4,7 @@ import logging
 import os
 import pickle
 import shutil
+import time
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -41,28 +42,25 @@ class Experience:
 
 class RemoteEmbeddingClient:
     DEFAULT_BASE_URL = "http://127.0.0.1:37001"
-    DEFAULT_TIMEOUT = 180
+    DEFAULT_TIMEOUT = 30
+    DEFAULT_MAX_RETRIES = 3
 
-    def __init__(self, base_url: str | None = None, timeout: int | None = None) -> None:
+    def __init__(self, base_url: str | None = None, timeout: int | None = None, max_retries: int | None = None) -> None:
         self.base_url = (base_url or os.environ.get("EXPERIENCE_BANK_EMBEDDING_URL") or self.DEFAULT_BASE_URL).rstrip("/")
         self.timeout = timeout or int(os.environ.get("EXPERIENCE_BANK_EMBEDDING_TIMEOUT", self.DEFAULT_TIMEOUT))
+        self.max_retries = max_retries if max_retries is not None else self.DEFAULT_MAX_RETRIES
         self._cache: dict[str, list[float]] = {}
+
+        import requests
+        self._session = requests.Session()
 
     def embed(self, texts: list[str]) -> list[list[float]]:
         if not texts:
             return []
 
-        import requests
-
         uncached_texts = [text for text in texts if text not in self._cache]
         if uncached_texts:
-            response = requests.post(
-                f"{self.base_url}/encode",
-                json={"text": uncached_texts},
-                timeout=self.timeout,
-            )
-            response.raise_for_status()
-            payload = response.json()
+            payload = self._post_with_retry(uncached_texts)
             if not isinstance(payload, list):
                 raise ValueError(f"Unexpected embedding response payload: {type(payload)!r}")
             if len(payload) != len(uncached_texts):
@@ -72,6 +70,27 @@ class RemoteEmbeddingClient:
             for text, item in zip(uncached_texts, payload):
                 self._cache[text] = item["embedding"]
         return [self._cache[text] for text in texts]
+
+    def _post_with_retry(self, texts: list[str]) -> list:
+        last_exc = None
+        for attempt in range(1, self.max_retries + 1):
+            try:
+                response = self._session.post(
+                    f"{self.base_url}/encode",
+                    json={"text": texts},
+                    timeout=self.timeout,
+                )
+                response.raise_for_status()
+                return response.json()
+            except Exception as e:
+                last_exc = e
+                if attempt < self.max_retries:
+                    wait = 2 ** attempt  # 2s, 4s
+                    logger.warning("Embedding request failed (attempt %d/%d): %s, retrying in %ds", attempt, self.max_retries, e, wait)
+                    time.sleep(wait)
+                else:
+                    logger.error("Embedding request failed after %d attempts: %s", self.max_retries, e)
+        raise last_exc
 
 
 class ExperienceBank:
@@ -133,11 +152,18 @@ class ExperienceBank:
         start_idx = len(self.experiences)
         self.experiences.extend(new_experiences)
         documents = [exp.retrieval_text for exp in new_experiences]
-        self._collection.add(
-            ids=[f"exp_{idx}" for idx in range(start_idx, len(self.experiences))],
-            documents=documents,
-            embeddings=self._embedding_client.embed(documents),
-        )
+        try:
+            embeddings = self._embedding_client.embed(documents)
+            self._collection.add(
+                ids=[f"exp_{idx}" for idx in range(start_idx, len(self.experiences))],
+                documents=documents,
+                embeddings=embeddings,
+            )
+        except Exception:
+            logger.warning(
+                "Embedding failed after retries, saving %d experience(s) to pickle only (skipping ChromaDB index)",
+                len(new_experiences),
+            )
         self.save()
 
     def retrieve(
