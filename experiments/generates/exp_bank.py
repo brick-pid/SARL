@@ -4,6 +4,7 @@ import logging
 import os
 import pickle
 import shutil
+import threading
 from dataclasses import dataclass
 from pathlib import Path
 from typing import List
@@ -56,19 +57,28 @@ class RemoteEmbeddingClient:
     def __init__(self, base_url: str | None = None, timeout: int | None = None) -> None:
         self.base_url = (base_url or os.environ.get("EXPERIENCE_BANK_EMBEDDING_URL") or self.DEFAULT_BASE_URL).rstrip("/")
         self.timeout = timeout or int(os.environ.get("EXPERIENCE_BANK_EMBEDDING_TIMEOUT", self.DEFAULT_TIMEOUT))
-        import requests
-
-        self._session = requests.Session()
-        self._session.trust_env = False
         self._cache: dict[str, list[float]] = {}
+        self._cache_lock = threading.Lock()
+        self._thread_local = threading.local()
+
+    def _get_session(self):
+        session = getattr(self._thread_local, "session", None)
+        if session is None:
+            import requests
+
+            session = requests.Session()
+            session.trust_env = False
+            self._thread_local.session = session
+        return session
 
     def embed(self, texts: list[str]) -> list[list[float]]:
         if not texts:
             return []
 
-        uncached_texts = [text for text in texts if text not in self._cache]
+        with self._cache_lock:
+            uncached_texts = [text for text in texts if text not in self._cache]
         if uncached_texts:
-            response = self._session.post(
+            response = self._get_session().post(
                 f"{self.base_url}/encode",
                 json={"text": uncached_texts},
                 timeout=self.timeout,
@@ -81,9 +91,12 @@ class RemoteEmbeddingClient:
                 raise ValueError(
                     f"Unexpected embedding response length: expected {len(uncached_texts)}, got {len(payload)}"
                 )
-            for text, item in zip(uncached_texts, payload):
-                self._cache[text] = item["embedding"]
-        return [self._cache[text] for text in texts]
+            with self._cache_lock:
+                for text, item in zip(uncached_texts, payload):
+                    self._cache[text] = item["embedding"]
+                return [self._cache[text] for text in texts]
+        with self._cache_lock:
+            return [self._cache[text] for text in texts]
 
 
 class ExperienceBank:
