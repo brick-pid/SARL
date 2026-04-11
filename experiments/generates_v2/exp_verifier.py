@@ -162,6 +162,7 @@ async def run_main_loop(
             )
             subagent_samples.append(sub_sample)
             subagent_count += 1
+            first_invoke = turn if first_invoke == -1 else first_invoke
             turn += 1
         elif parsed.type == "action":
             step_output = await asyncio.to_thread(env.step, parsed.content)
@@ -195,12 +196,13 @@ async def run_main_loop(
         outcome_reward = rewards[-1] / 100 if rewards and rewards[-1] > 0 else 0.0
     else:
         outcome_reward = rewards[-1] if rewards else 0.0
-    if subagent_count == 0:
-        subagent_bonus = 0.0
-    elif subagent_count <= 5:
-        subagent_bonus = 0.1
-    else:
-        subagent_bonus = -0.1
+    subagent_bonus = 0.0
+    # over invoke penalty:
+    if subagent_count > 3:
+        subagent_bonus -= min(1.0, 0.1 * (subagent_count - 3))
+    # helpful subagent bonus
+    if outcome_reward == 1.0 and subagent_count > 0:
+        subagent_bonus += 0.1
     sample.outcome_reward = outcome_reward
     sample.subagent_bonus = subagent_bonus
     sample.reward = outcome_reward + subagent_bonus
