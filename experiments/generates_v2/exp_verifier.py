@@ -162,7 +162,6 @@ async def run_main_loop(
             )
             subagent_samples.append(sub_sample)
             subagent_count += 1
-            first_invoke = turn if first_invoke == -1 else first_invoke
             turn += 1
         elif parsed.type == "action":
             step_output = await asyncio.to_thread(env.step, parsed.content)
