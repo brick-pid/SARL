@@ -13,8 +13,8 @@ The target interaction pattern is:
 
 1. `executor` runs one full task trajectory.
 2. `verifier` judges whether the trajectory solved the task.
-3. If verifier says `correct`, the episode stops.
-4. If verifier says `incorrect` and the round budget allows, `critic` produces feedback.
+3. If `executor` succeeds, the episode stops.
+4. If `executor` does not succeed and the round budget allows, `critic` produces feedback.
 5. A new `executor` round restarts the task with the critic feedback in context.
 
 `max_rounds >= 1`.
@@ -49,7 +49,7 @@ Round `r` contains:
 
 Critic exists only when:
 
-- verifier predicts `incorrect`
+- executor does not succeed
 - `r < max_rounds`
 
 ### Role Trajectory
@@ -76,17 +76,17 @@ Important consequence:
 3. Compute task outcome reward from env result.
 4. Run `verifier` on the executor trajectory.
 5. Compare verifier prediction with true executor outcome to get verifier reward.
-6. If verifier predicts `correct`, stop.
-7. Otherwise, if `max_rounds > 1`, run `critic`.
+6. If `executor` succeeds, stop.
+7. Otherwise, if another round is available, run `critic`.
 
 ### Round r > 1
 
 1. Reset env to the same task again.
 2. Run a new `executor`, conditioning only on the previous round's critic feedback.
 3. Run `verifier`.
-4. If verifier predicts `incorrect` and another round is available, run `critic` again.
+4. If `executor` does not succeed and another round is available, run `critic` again.
 
-The stopping decision is driven by verifier prediction, not ground truth. This is intentional: verifier is part of the learned policy loop.
+The stopping decision is driven by `executor` task success, not verifier prediction. Verifier is still trained each round as a separate role, but it does not control whether another executor round is launched.
 
 ### Env lifecycle
 
@@ -96,7 +96,7 @@ This avoids the earlier temporary `open -> read init_obs -> close` pattern and k
 
 ### Train vs Eval return value
 
-The rollout control flow is the same for training and evaluation: both run the full `executor -> verifier -> critic -> next executor` process.
+The rollout control flow is the same for training and evaluation: both run the same conditional `executor -> verifier -> critic -> next executor` process.
 
 The difference is only what gets returned to the outer rollout framework:
 

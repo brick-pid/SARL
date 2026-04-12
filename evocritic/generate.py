@@ -104,7 +104,7 @@ async def generate(args: Any, sample: Sample, sampling_params: dict, evaluation:
             )
             episode.rounds.append(round_record)
 
-            if verifier_pred_success or round_id >= max_rounds:
+            if exec_success or round_id >= max_rounds:
                 break
 
             critic_sample, critic_text = await _run_judge_round(
