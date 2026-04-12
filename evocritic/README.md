@@ -195,6 +195,7 @@ This keeps the training signal focused on local improvement instead of accumulat
 
 The verifier prompt currently expects:
 
+- input contains task + trajectory summary only; it must not see the executor outcome reward
 - `<verdict>correct</verdict>` if the trajectory solved the task
 - `<verdict>incorrect</verdict>` otherwise
 
@@ -204,6 +205,7 @@ Even though the tag text is `correct/incorrect`, semantically it means trajector
 
 The critic prompt currently expects:
 
+- input contains task + trajectory summary + normalized executor outcome reward
 - `<critic>...</critic>`
 
 The enclosed text is fed to the next executor round as the previous critic feedback.
