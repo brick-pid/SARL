@@ -9,6 +9,7 @@ from slime.rollout.sglang_rollout import GenerateState
 from slime.utils.types import Sample
 
 from experiments.envs.math_env import MathEnvClient
+from experiments.rewards import is_success_reward
 from experiments.utils import init_env_client, parse_last_xml
 
 from .prompts import render_role_prompt
@@ -89,7 +90,7 @@ async def generate(args: Any, sample: Sample, sampling_params: dict, evaluation:
                 max_rounds=max_rounds,
                 max_new_tokens=verifier_max_new_tokens,
             )
-            exec_success = _is_success(exec_reward)
+            exec_success = is_success_reward(exec_reward)
             verifier_reward = 1.0 if verifier_pred_success == exec_success else 0.0
 
             round_record = RoundRecord(
@@ -359,7 +360,3 @@ def _normalize_outcome_reward(data_source: str, reward: float) -> float:
     if data_source == "sciworld":
         return reward / 100 if reward > 0 else 0.0
     return float(reward)
-
-
-def _is_success(normalized_reward: float) -> bool:
-    return normalized_reward == 1.0

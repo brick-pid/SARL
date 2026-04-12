@@ -166,17 +166,13 @@ This gives role-specific group relative advantage:
 - verifier samples compete only with verifier samples
 - critic samples compete only with critic samples
 
-Two normalization modes are supported:
+The supported normalization mode is:
 
-- `sample_norm`: normalize each role sample directly
-- `episode_norm`: normalize per `(episode, role)` then broadcast to samples in that role
-
-Default recommendation: `sample_norm`
+- `role_norm`: normalize within each `(group_index, role)` bucket
 
 Reason:
 
-- executor/verifier/critic within the same episode can have different round-level learning signals
-- broadcasting one value across all rounds is usually too coarse for this setup
+- executor/verifier/critic within the same prompt group should not be normalized together
 
 ## Prompt / Context Semantics
 

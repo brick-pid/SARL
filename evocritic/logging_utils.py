@@ -3,6 +3,8 @@ from __future__ import annotations
 from collections import defaultdict
 from pathlib import Path
 
+from experiments.rewards import is_success_reward
+
 
 def log_rollout_data(rollout_id, args, samples, rollout_extra_metrics, rollout_time) -> bool:
     assert rollout_extra_metrics is not None
@@ -14,11 +16,12 @@ def log_rollout_data(rollout_id, args, samples, rollout_extra_metrics, rollout_t
         role = sample.metadata.get("role", "unknown")
         role_counts[role] += 1
         reward = sample.reward if isinstance(sample.reward, (int, float)) else 0.0
-        if reward == 1.0:
+        if is_success_reward(reward):
             role_success[role] += 1
 
     for role, count in role_counts.items():
         rollout_extra_metrics[f"rollout/{role}/reward_mean_proxy"] = role_success[role] / max(count, 1)
+    rollout_extra_metrics["rollout/episode/success_rate"] = _compute_episode_success_rate(samples)
     return False
 
 
@@ -34,12 +37,28 @@ def log_eval_rollout_data(rollout_id, args, data, extra_metrics) -> bool:
             role = sample.metadata.get("role", "unknown")
             role_counts[role] += 1
             reward = sample.reward if isinstance(sample.reward, (int, float)) else 0.0
-            if reward > 0.5:
+            if is_success_reward(reward):
                 role_success[role] += 1
 
         for role, count in role_counts.items():
             extra_metrics[f"eval/{dataset_name}/{role}/reward_mean_proxy"] = role_success[role] / max(count, 1)
+        extra_metrics[f"eval/{dataset_name}/episode/success_rate"] = _compute_episode_success_rate(samples)
     return False
+
+
+def _compute_episode_success_rate(samples) -> float:
+    final_executor_by_episode = {}
+    for sample in samples:
+        if sample.metadata["role"] != "executor":
+            continue
+        episode_id = sample.index
+        round_id = sample.metadata["round_id"]
+        prev_sample = final_executor_by_episode.get(episode_id)
+        if prev_sample is None or round_id > prev_sample.metadata["round_id"]:
+            final_executor_by_episode[episode_id] = sample
+
+    success_count = sum(is_success_reward(sample.reward) for sample in final_executor_by_episode.values())
+    return success_count / len(final_executor_by_episode)
 
 
 def _save_rollout_trajectories(rollout_id, args, samples, *, split: str) -> None:
