@@ -9,10 +9,10 @@ from slime.rollout.sglang_rollout import GenerateState
 from slime.utils.types import Sample
 
 from experiments.envs.math_env import MathEnvClient
-from experiments.rewards import is_success_reward
-from experiments.utils import init_env_client, parse_last_xml
+from experiments.utils import init_env_client
 
 from .prompts import render_role_prompt
+from .rewards import is_success_reward
 from .runtime import (
     append_observation_turn,
     append_to_sample,
@@ -24,6 +24,7 @@ from .runtime import (
     should_stop_on_repeat,
 )
 from .schema import EpisodeRecord, RoundRecord
+from .utils import parse_last_xml
 
 logger = logging.getLogger(__name__)
 

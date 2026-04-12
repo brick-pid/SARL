@@ -9,6 +9,11 @@ def _get_reward_norm(args) -> str:
     return args.custom_config['reward_norm']
 
 
+def is_success_reward(reward: float) -> bool:
+    assert 0 <= reward <= 1
+    return reward == 1.0
+
+
 def post_process_rewards(args, samples):
     assert not (samples and isinstance(samples[0], list)), "samples should be flattened before reward post-process"
 
