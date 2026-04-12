@@ -260,11 +260,10 @@ async def _run_judge_round(
     user_lines = [
         f"# Task\n{task}",
         f"# Trajectory Summary\n{trajectory_summary}",
-        f"# Normalized Outcome Reward\n{executor_reward}",
     ]
     messages = [
         {"role": "system", "content": system_prompt},
-        {"role": "user", "content": "\n\n".join(user_lines)},
+        {"role": "user", "content": "\n".join(user_lines)},
     ]
 
     role_sample = clone_role_sample(base_sample, role=role, round_id=round_id, prompt=messages)
