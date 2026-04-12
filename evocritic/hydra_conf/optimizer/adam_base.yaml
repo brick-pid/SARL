@@ -1,0 +1,7 @@
+cli:
+  optimizer: adam
+  lr: 1e-6
+  lr_decay_style: constant
+  weight_decay: 0.1
+  adam_beta1: 0.9
+  adam_beta2: 0.98

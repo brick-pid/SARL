@@ -1,0 +1,8 @@
+dump_append_exp_name: true
+dump_base_dir: ${paths.dump_dir}
+cli:
+  attention_dropout: 0.0
+  hidden_dropout: 0.0
+  accumulate_allreduce_grads_in_fp32: true
+  attention_softmax_in_fp32: true
+  attention_backend: flash

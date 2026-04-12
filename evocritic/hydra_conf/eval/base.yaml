@@ -1,0 +1,7 @@
+cli:
+  eval_interval: 10
+  eval_prompt_data:
+    - ${custom.env_name}
+    - ${paths.data_dir}/agentgym/test/${custom.env_name}_test.jsonl
+  eval_max_response_len: 2048
+  eval_top_p: 1

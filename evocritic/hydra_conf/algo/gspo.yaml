@@ -1,0 +1,9 @@
+name: gspo
+cli:
+  advantage_estimator: ${algo.name}
+  use_kl_loss: true
+  kl_loss_coef: 0.0
+  kl_loss_type: low_var_kl
+  entropy_coef: 0.0
+  eps_clip: 0.2
+  eps_clip_high: 0.28

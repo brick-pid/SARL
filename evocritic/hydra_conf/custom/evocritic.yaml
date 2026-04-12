@@ -1,0 +1,15 @@
+name: evocritic
+env_name: alfworld
+reward_process: evocritic.rewards.post_process_rewards
+custom_config:
+  generate: evocritic
+  reward_norm: episode_norm
+  max_rounds: 3
+  max_env_turns: 30
+  max_repeat_actions: 3
+  verifier_max_new_tokens: 1024
+  critic_max_new_tokens: 1024
+  env_port_base: 36001
+  env_nums: 32
+  exp_dir: ${paths.exp_dir}
+

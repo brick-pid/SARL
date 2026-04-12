@@ -1,0 +1,5 @@
+name: sft
+cli:
+  loss_type: sft_loss
+  calculate_per_token_loss: true
+  disable_compute_advantages_and_returns: true
