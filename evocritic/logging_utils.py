@@ -10,18 +10,12 @@ def log_rollout_data(rollout_id, args, samples, rollout_extra_metrics, rollout_t
     assert rollout_extra_metrics is not None
     _save_rollout_trajectories(rollout_id, args, samples, split="train")
 
-    role_counts = defaultdict(int)
-    role_success = defaultdict(int)
-    for sample in samples:
-        role = sample.metadata.get("role", "unknown")
-        role_counts[role] += 1
-        reward = sample.reward if isinstance(sample.reward, (int, float)) else 0.0
-        if is_success_reward(reward):
-            role_success[role] += 1
-
-    for role, count in role_counts.items():
-        rollout_extra_metrics[f"rollout/{role}/reward_mean_proxy"] = role_success[role] / max(count, 1)
+    _log_group_metrics(rollout_extra_metrics, "rollout", samples)
     rollout_extra_metrics["rollout/episode/success_rate"] = _compute_episode_success_rate(samples)
+    for subset_name, subset_samples in _group_samples_by_subset(samples).items():
+        rollout_extra_metrics[f"rollout/subset/{subset_name}/episode/success_rate"] = _compute_episode_success_rate(
+            subset_samples
+        )
     return False
 
 
@@ -31,18 +25,12 @@ def log_eval_rollout_data(rollout_id, args, data, extra_metrics) -> bool:
         samples = dataset_data["samples"]
         _save_rollout_trajectories(rollout_id, args, samples, split="eval")
 
-        role_counts = defaultdict(int)
-        role_success = defaultdict(int)
-        for sample in samples:
-            role = sample.metadata.get("role", "unknown")
-            role_counts[role] += 1
-            reward = sample.reward if isinstance(sample.reward, (int, float)) else 0.0
-            if is_success_reward(reward):
-                role_success[role] += 1
-
-        for role, count in role_counts.items():
-            extra_metrics[f"eval/{dataset_name}/{role}/reward_mean_proxy"] = role_success[role] / max(count, 1)
+        _log_group_metrics(extra_metrics, f"eval/{dataset_name}", samples)
         extra_metrics[f"eval/{dataset_name}/episode/success_rate"] = _compute_episode_success_rate(samples)
+        for subset_name, subset_samples in _group_samples_by_subset(samples).items():
+            extra_metrics[f"eval/{dataset_name}/subset/{subset_name}/episode/success_rate"] = _compute_episode_success_rate(
+                subset_samples
+            )
     return False
 
 
@@ -59,6 +47,42 @@ def _compute_episode_success_rate(samples) -> float:
 
     success_count = sum(is_success_reward(sample.reward) for sample in final_executor_by_episode.values())
     return success_count / len(final_executor_by_episode)
+
+
+def _log_group_metrics(metrics: dict, prefix: str, samples) -> None:
+    role_counts = defaultdict(int)
+    role_success = defaultdict(int)
+    subset_role_counts = defaultdict(int)
+    subset_role_success = defaultdict(int)
+
+    for sample in samples:
+        role = sample.metadata.get("role", "unknown")
+        role_counts[role] += 1
+        subset = sample.metadata.get("subset")
+        if subset:
+            subset_role_counts[(subset, role)] += 1
+
+        reward = sample.reward if isinstance(sample.reward, (int, float)) else 0.0
+        if not is_success_reward(reward):
+            continue
+
+        role_success[role] += 1
+        if subset:
+            subset_role_success[(subset, role)] += 1
+
+    for role, count in role_counts.items():
+        metrics[f"{prefix}/{role}/reward_mean_proxy"] = role_success[role] / max(count, 1)
+    for (subset, role), count in subset_role_counts.items():
+        metrics[f"{prefix}/{subset}/{role}/reward_mean_proxy"] = subset_role_success[(subset, role)] / max(count, 1)
+
+
+def _group_samples_by_subset(samples) -> dict[str, list]:
+    grouped = defaultdict(list)
+    for sample in samples:
+        subset = sample.metadata.get("subset")
+        if subset:
+            grouped[subset].append(sample)
+    return dict(grouped)
 
 
 def _save_rollout_trajectories(rollout_id, args, samples, *, split: str) -> None:
@@ -81,6 +105,8 @@ def _save_rollout_trajectories(rollout_id, args, samples, *, split: str) -> None
             f.write(f"round_id: {sample.metadata.get('round_id')}\n")
             f.write(f"role: {role}\n")
             f.write(f"reward: {sample.reward}\n")
+            if "subset" in sample.metadata:
+                f.write(f"subset: {sample.metadata['subset']}\n")
             if "task_desc" in sample.metadata:
                 f.write(f"task_desc: {sample.metadata['task_desc']}\n")
             trajectory = str(getattr(sample, "trajectory", sample.response))

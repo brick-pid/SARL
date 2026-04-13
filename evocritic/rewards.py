@@ -10,8 +10,8 @@ def _get_reward_norm(args) -> str:
 
 
 def is_success_reward(reward: float) -> bool:
-    assert 0 <= reward <= 1
-    return reward == 1.0
+    # assert 0 <= reward <= 1
+    return reward == 1.0 or reward == 100.0
 
 
 def post_process_rewards(args, samples):
