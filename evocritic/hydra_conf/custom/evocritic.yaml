@@ -9,6 +9,8 @@ custom_config:
   max_repeat_actions: 3
   verifier_max_new_tokens: 1024
   critic_max_new_tokens: 1024
+  critic_use_retrieval: true
+  critic_use_retrieved_trajectories: true
   env_port_base: 36001
   env_nums: 32
   exp_dir: ${paths.exp_dir}
