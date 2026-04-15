@@ -127,7 +127,13 @@ async def generate(args: Any, sample: Sample, sampling_params: dict, evaluation:
         _assign_rewards(episode)
         all_samples = _flatten_episode(episode)
         if evaluation:
-            return episode.rounds[-1].executor_sample if episode.rounds else sample
+            if not episode.rounds:
+                return sample
+            final_sample = episode.rounds[-1].executor_sample
+            final_sample.metadata["round_successes"] = [
+                is_success_reward(record.executor_reward) for record in episode.rounds
+            ]
+            return final_sample
         return all_samples
     finally:
         await asyncio.to_thread(env.close)
