@@ -1,0 +1,6 @@
+cli:
+  hf_checkpoint: ${paths.model_dir}/qwen3-8b-base
+  load: ${paths.model_dir}/qwen3-8b-base-torch-dist
+  ref_load: ${paths.model_dir}/qwen3-8b-base-torch-dist
+  save: ${paths.checkpoint_dir}
+  save_interval: 50

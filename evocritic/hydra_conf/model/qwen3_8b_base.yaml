@@ -1,0 +1,3 @@
+label: qwen3-8b-base
+script: scripts/models/qwen3-8B.sh
+script_path: ${paths.repo_dir}/${model.script}
