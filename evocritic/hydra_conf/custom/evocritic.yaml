@@ -1,6 +1,6 @@
 name: evocritic
 env_name: alfworld
-reward_process: evocritic.rewards.post_process_rewards
+reward_process: evocritic.rewards2.post_process_rewards
 custom_config:
   generate: evocritic
   reward_norm: role_norm

@@ -22,7 +22,6 @@ class Sample:
     label: str | None = None
     reward: float | dict[str, Any] | None = None
     outcome_reward: float | None = None
-    subagent_bonus: float | None = None
     loss_mask: list[int] | None = None
     weight_versions: list[str] = field(default_factory=list)
     rollout_log_probs: list[float] | None = None  # Log probabilities from rollout engine
