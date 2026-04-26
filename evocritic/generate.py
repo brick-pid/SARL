@@ -88,7 +88,9 @@ async def generate(args: Any, sample: Sample, sampling_params: dict, evaluation:
 
             rollout_samples.append(exec_sample)
 
-            if exec_done or exec_success or round_id >= max_rounds:
+            # if evaluation or exec_done or exec_success or round_id >= max_rounds:
+            # if exec_done or exec_success or round_id >= max_rounds:
+            if exec_success or round_id >= max_rounds:
                 break
 
             critic_sample, critic_text = await _run_judge_round(
@@ -139,20 +141,24 @@ async def _run_executor_round(
     obs = await asyncio.to_thread(env.observe)
     assert obs == init_obs or bool(obs)
 
-    system_prompt = render_role_prompt(
-        env_name=data_source,
-        role="executor",
+    system_prompt = render_role_prompt(env_name=data_source, role="executor", task=task)
+    behavior_messages = _build_executor_messages(
         task=task,
+        init_obs=init_obs,
+        previous_critic=previous_critic,
+        system_prompt=system_prompt,
     )
-    context_block = _build_executor_user_context(task=task, init_obs=init_obs, previous_critic=previous_critic)
-    messages = [
-        {"role": "system", "content": system_prompt},
-        {"role": "user", "content": context_block},
-    ]
+    critic_free_messages = _build_executor_messages(
+        task=task,
+        init_obs=init_obs,
+        previous_critic=None,
+        system_prompt=system_prompt,
+    )
 
-    exec_sample = clone_role_sample(base_sample, role="executor", round_id=round_id, prompt=messages)
+    exec_sample = clone_role_sample(base_sample, role="executor", round_id=round_id, prompt=behavior_messages)
     exec_sample.metadata["task_desc"] = task
-    prompt_ids = tokenizer.apply_chat_template(messages, tokenize=True, add_generation_prompt=True)
+    prompt_ids = tokenizer.apply_chat_template(behavior_messages, tokenize=True, add_generation_prompt=True)
+    critic_free_prompt_ids = tokenizer.apply_chat_template(critic_free_messages, tokenize=True, add_generation_prompt=True)
     turn_pre, turn_post = build_chat_turn_markers(tokenizer)
     response_token_ids = init_sample_state(exec_sample, prompt_ids)
     budget = args.rollout_max_context_len - len(prompt_ids)
@@ -209,12 +215,15 @@ async def _run_executor_round(
     exec_sample.metadata["turn"] = turn
     exec_sample.metadata["critic_history"] = list(critic_history)
     exec_sample.metadata["previous_critic"] = previous_critic
+    exec_sample.metadata["behavior_prompt_ids"] = list(prompt_ids)
+    exec_sample.metadata["critic_free_prompt_ids"] = list(critic_free_prompt_ids)
     exec_sample.metadata["trajectory_summary"] = _build_trajectory_summary(
         task=task,
         actions=action_history,
         observations=observation_history,
         normalized_reward=outcome_reward,
     )
+    exec_sample.tokens = critic_free_prompt_ids + response_token_ids
     finalized = finalize_sample(exec_sample, tokenizer, response_token_ids)
     return finalized, outcome_reward, done
 
@@ -270,12 +279,21 @@ def _find_latest_critic(samples: list[Sample]) -> Sample | None:
     return None
 
 
-def _build_executor_user_context(*, task: str, init_obs: str, previous_critic: str | None) -> str:
+def _build_executor_messages(
+    *,
+    task: str,
+    init_obs: str,
+    previous_critic: str | None,
+    system_prompt: str,
+) -> list[dict[str, str]]:
     sections = [f"# Task\n{task}"]
     if previous_critic:
         sections.append("# Core Tips From Previous Critique\n" + previous_critic)
     sections.append("# Initial Observation\n" + init_obs)
-    return "\n\n".join(sections)
+    return [
+        {"role": "system", "content": system_prompt},
+        {"role": "user", "content": "\n\n".join(sections)},
+    ]
 
 
 def _build_trajectory_summary(
