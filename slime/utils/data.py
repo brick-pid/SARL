@@ -22,6 +22,30 @@ __all__ = ["Dataset"]
 logger = logging.getLogger(__name__)
 
 
+def _normalize_criticgrpo_math_row(data: dict) -> dict:
+    prompt = data.get("prompt")
+    reward_model = data.get("reward_model")
+    if not isinstance(prompt, list) or not isinstance(reward_model, dict) or "ground_truth" not in reward_model:
+        return data
+
+    source = data.get("data_source")
+    extra_info = data.get("extra_info")
+    metadata = {"data_source": "math"}
+    if isinstance(source, str) and source:
+        metadata["subset"] = source
+        metadata["source_dataset"] = source
+    if isinstance(extra_info, dict):
+        metadata.update(extra_info)
+    if "__index_level_0__" in data:
+        metadata["parquet_index"] = data["__index_level_0__"]
+
+    return {
+        "prompt": prompt,
+        "label": reward_model["ground_truth"],
+        "metadata": metadata,
+    }
+
+
 def read_file(path):
     path, row_slice = _parse_generalized_path(path)
     reader = None
@@ -186,6 +210,8 @@ class Dataset:
     ):
         origin_samples = []
         for data in read_file(path):
+            if isinstance(data, dict):
+                data = _normalize_criticgrpo_math_row(data)
             # Both chat templates and multimodal inputs require conversation format (list of message dicts)
             as_conversation = apply_chat_template or (multimodal_keys is not None)
             prompt = _build_messages(data, prompt_key, as_conversation, multimodal_keys)

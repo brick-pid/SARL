@@ -1,13 +1,14 @@
 """
 MathEnvClient — local (serverless) environment for math problem solving.
 
-Constructed per-problem with (problem, label). Uses verify() from
-slime/rollout/rm_hub/math_dapo_utils.py for answer checking.
+Constructed per-problem with (problem, label). Uses math_verify.parse/verify
+for answer checking.
 """
 import re
 
+from math_verify import parse, verify
+
 from .controller.types import ParseResult, StepOutput
-from slime.rollout.rm_hub.math_dapo_utils import verify
 
 
 class MathEnvClient:
@@ -32,17 +33,23 @@ class MathEnvClient:
         return ParseResult(type=None, content=response)
 
     def step(self, action: str) -> StepOutput:
-        correct, pred = verify(solution_str=action, answer=self.label)
+        candidate = action.strip()
+        gold = parse(str(self.label), parsing_timeout=None)
+        pred = parse(candidate, parsing_timeout=None)
+        correct = bool(pred) and bool(verify(gold or str(self.label), pred, strict=True, timeout_seconds=None))
         reward = 1.0 if correct else 0.0
+        state = "Your answer is correct." if correct else "Your answer is incorrect."
+        if not pred:
+            state = "Could not extract a valid final answer from your response."
         return StepOutput(
-            state=f"Your answer is {'correct' if correct else 'incorrect'}.",
+            state=state,
             reward=reward,
             done=True,
         )
 
     @property
     def invalid_action_obs(self) -> str:
-        return "Invalid format. Use <answer>your_answer</answer>."
+        return "Invalid format. Use <answer>\\boxed{your_answer}</answer>."
 
     def close(self):
         pass

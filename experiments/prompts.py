@@ -161,6 +161,18 @@ Rules:
 5. Issue stop action when you think you have achieved the objective. Don't generate anything after stop.
 """.strip()
 
+# ---- Math ----
+MATH_DESC = """
+Math is a single-turn problem-solving environment. You are given one math problem and must return only the final answer in the required XML answer tag.
+""".strip()
+
+MATH_ACTIONS = """
+Available Actions:
+<answer>
+\\boxed{answer}
+</answer>
+""".strip()
+
 # ---------------------------------------------------------------------------
 # Registry: unified reference
 # ---------------------------------------------------------------------------
@@ -171,6 +183,7 @@ ENV_REGISTRY = {
     "alfworld": {"desc": ALFWORLD_DESC, "actions": ALFWORLD_ACTIONS},
     "searchqa": {"desc": SEARCHQA_DESC, "actions": SEARCHQA_ACTIONS},
     "webarena": {"desc": WEBARENA_DESC, "actions": WEBARENA_ACTIONS},
+    "math": {"desc": MATH_DESC, "actions": MATH_ACTIONS},
 }
 
 # ---------------------------------------------------------------------------

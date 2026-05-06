@@ -2,13 +2,42 @@ import json
 import os
 
 import hydra
-from omegaconf import DictConfig, OmegaConf
+from omegaconf import DictConfig, OmegaConf, open_dict
 
 from .utils import dump_resolved_custom_config, load_model_args, render_cli_args, run_command
 
 
+def _configure_math_datasets(cfg: DictConfig) -> None:
+    if cfg.custom.env_name != "math":
+        return
+
+    train_default = f"{cfg.paths.data_dir}/agentgym/train/{cfg.custom.env_name}_train.jsonl"
+    test_default = f"{cfg.paths.data_dir}/agentgym/test/{cfg.custom.env_name}_test.jsonl"
+    math_train = f"{cfg.paths.data_dir}/criticgrpo/train.parquet"
+    math_test = f"{cfg.paths.data_dir}/criticgrpo/test.parquet"
+
+    with open_dict(cfg):
+        if cfg.rollout.cli.get("prompt_data") in (None, train_default):
+            cfg.rollout.cli.prompt_data = math_train
+        if cfg.rollout.cli.get("input_key") == "task_id":
+            cfg.rollout.cli.input_key = "prompt"
+        if cfg.rollout.cli.get("label_key") is None:
+            cfg.rollout.cli.label_key = "label"
+        if cfg.rollout.cli.get("metadata_key") is None:
+            cfg.rollout.cli.metadata_key = "metadata"
+
+        eval_prompt_data = list(cfg.eval.cli.get("eval_prompt_data") or [])
+        if not eval_prompt_data or eval_prompt_data == [cfg.custom.env_name, test_default]:
+            cfg.eval.cli.eval_prompt_data = [cfg.custom.env_name, math_test]
+        if cfg.eval.cli.get("eval_input_key") is None:
+            cfg.eval.cli.eval_input_key = "prompt"
+        if cfg.eval.cli.get("eval_label_key") is None:
+            cfg.eval.cli.eval_label_key = "label"
+
+
 @hydra.main(version_base="1.3", config_path="hydra_conf", config_name="config")
 def main(cfg: DictConfig) -> None:
+    _configure_math_datasets(cfg)
     OmegaConf.resolve(cfg)
     OmegaConf.save(cfg, cfg.paths.exp_dir + "/config_resoved.yaml")
 

@@ -23,6 +23,11 @@ _ROLE_TEMPLATE = {
     "critic": "critic_system.j2",
 }
 
+_MATH_ROLE_TEMPLATE = {
+    "executor": "math_executor_system.j2",
+    "critic": "math_critic_system.j2",
+}
+
 
 def _validate_template_vars(template_name: str, context: dict[str, Any]) -> None:
     source, _, _ = _TEMPLATE_ENV.loader.get_source(_TEMPLATE_ENV, template_name)
@@ -47,7 +52,8 @@ def render_role_prompt(
         raise ValueError(f"Unknown env_name: {env_name!r}")
 
     reg = ENV_REGISTRY[env_name]
-    template_name = _ROLE_TEMPLATE[role]
+    template_map = _MATH_ROLE_TEMPLATE if env_name == "math" else _ROLE_TEMPLATE
+    template_name = template_map[role]
     template = _TEMPLATE_ENV.get_template(template_name)
     context = {
         "env_name": env_name,

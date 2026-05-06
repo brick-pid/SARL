@@ -8,6 +8,7 @@ from typing import Any
 from slime.rollout.sglang_rollout import GenerateState
 from slime.utils.types import Sample
 
+from experiments.envs.math_env import MathEnvClient
 from experiments.utils import init_env_client
 
 from .prompts import render_role_prompt
@@ -259,12 +260,15 @@ async def _run_judge_round(
     prompt_ids = tokenizer.apply_chat_template(messages, tokenize=True, add_generation_prompt=True)
     response_token_ids = init_sample_state(role_sample, prompt_ids)
 
+    # TODO: change critic endpoint by config
+    # url = f"http://127.0.0.1:37001/generate"
     resp_text, new_token_ids, new_log_probs = await generate_one_turn(
         input_ids=role_sample.tokens,
         url=url,
         sampling_params=sampling_params,
         budget=max_new_tokens,
     )
+    print(f"print critic tokens: {len(new_token_ids)}")
     append_to_sample(role_sample, response_token_ids, new_token_ids, new_log_probs, loss_mask_val=1)
     finalized = finalize_sample(role_sample, tokenizer, response_token_ids)
 
@@ -315,11 +319,31 @@ def _build_trajectory_summary(
 
 
 async def _open_env_for_sample(sample: Sample, data_source: str, env_address: str):
+    if data_source == "math":
+        problem = _extract_math_problem(sample.prompt)
+        label = sample.label
+        env = MathEnvClient(problem=problem, label=label)
+        sample.metadata["task_id"] = None
+        return env, env.observe()
+
     task_id = int(sample.prompt)
     env = await asyncio.to_thread(init_env_client, env_name=data_source, env_addr=env_address)
     await asyncio.to_thread(env.reset, task_id)
     init_obs = await asyncio.to_thread(env.observe)
     return env, init_obs
+
+
+def _extract_math_problem(prompt: str | list[dict[str, str]]) -> str:
+    if isinstance(prompt, str):
+        return prompt
+    if isinstance(prompt, list):
+        for message in reversed(prompt):
+            if message.get("role") == "user" and isinstance(message.get("content"), str):
+                return message["content"]
+        for message in prompt:
+            if isinstance(message.get("content"), str):
+                return message["content"]
+    raise ValueError("Unsupported math prompt format.")
 
 
 def _normalize_outcome_reward(data_source: str, reward: float) -> float:
