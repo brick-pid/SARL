@@ -1,3 +1,0 @@
-cli:
-  rollout_num_gpus_per_engine: 2
-  sglang_mem_fraction_static: 0.7
