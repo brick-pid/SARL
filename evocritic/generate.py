@@ -8,9 +8,7 @@ from typing import Any
 from slime.rollout.sglang_rollout import GenerateState
 from slime.utils.types import Sample
 
-from experiments.envs.math_env import MathEnvClient
-from experiments.utils import init_env_client
-
+from .envs import MathEnvClient, init_env_client
 from .prompts import render_role_prompt
 from .rewards import is_success_reward
 from .runtime import (
