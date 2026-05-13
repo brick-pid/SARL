@@ -7,3 +7,5 @@ cli:
   entropy_coef: 0.0
   eps_clip: 0.2
   eps_clip_high: 0.28
+  use_tis: true
+  use_rollout_logprobs: false
