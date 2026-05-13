@@ -63,9 +63,9 @@ def main(cfg: DictConfig) -> None:
     train_args.extend(render_cli_args(cfg.sglang.cli))
     train_args.extend(render_cli_args(cfg.misc.cli))
     train_args.extend(["--custom-config-path", custom_config_path])
-    train_args.extend(["--custom-generate-function-path", "evocritic.generate.generate"])
-    train_args.extend(["--custom-rollout-log-function-path", "evocritic.logging_utils.log_rollout_data"])
-    train_args.extend(["--custom-eval-rollout-log-function-path", "evocritic.logging_utils.log_eval_rollout_data"])
+    train_args.extend(["--custom-generate-function-path", "icrl.generate.generate"])
+    train_args.extend(["--custom-rollout-log-function-path", "icrl.logging_utils.log_rollout_data"])
+    train_args.extend(["--custom-eval-rollout-log-function-path", "icrl.logging_utils.log_eval_rollout_data"])
     if cfg.custom.reward_process is not None:
         train_args.extend(["--custom-reward-post-process-path", cfg.custom.reward_process])
 

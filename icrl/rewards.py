@@ -46,7 +46,7 @@ def _role_group_key(sample: Sample) -> tuple[int, str]:
     assert sample.group_index is not None, "sample.group_index must not be None"
     role = sample.metadata.get("role")
     if role is None:
-        raise ValueError("sample.metadata['role'] must not be None for EvoCritic reward processing")
+        raise ValueError("sample.metadata['role'] must not be None for icrl reward processing")
     return sample.group_index, role
 
 

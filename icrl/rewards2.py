@@ -53,9 +53,9 @@ def _prompt_round_role_group_key(sample: Sample) -> tuple[int, int, str]:
     role = sample.metadata.get("role")
 
     if round_id is None:
-        raise ValueError("sample.metadata['round_id'] must not be None for EvoCritic reward processing")
+        raise ValueError("sample.metadata['round_id'] must not be None for icrl reward processing")
     if role is None:
-        raise ValueError("sample.metadata['role'] must not be None for EvoCritic reward processing")
+        raise ValueError("sample.metadata['role'] must not be None for icrl reward processing")
 
     return _get_prompt_id(sample), int(round_id), str(role)
 

@@ -7,7 +7,7 @@ defaults:
   - eval: base
   - gpu: train_2gpu
   - logging: offline_wandb_tb
-  - custom: evocritic
+  - custom: icrl
   - optimizer: adam_base
   - sglang: base
   - misc: base
@@ -23,7 +23,7 @@ runtime:
 
 hydra:
   job:
-    name: evocritic_runner
+    name: icrl_runner
     chdir: false
   run:
     dir: ${paths.exp_dir}

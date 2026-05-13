@@ -6,7 +6,7 @@ cli:
   num_rollout: 300
   rollout_batch_size: 16
   n_samples_per_prompt: 8
-  rollout_sample_filter_path: evocritic.sample_filters.mask_rounds
+  rollout_sample_filter_path: icrl.sample_filters.mask_rounds
   rollout_max_context_len: 16384
   rollout_max_response_len: 2048
   rollout_temperature: 1

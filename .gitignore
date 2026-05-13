@@ -198,6 +198,6 @@ dump/
 models/
 tensorboard_log/
 preliminary/
-evocritic/runs/
+icrl/runs/
 analysis/
 experiments/

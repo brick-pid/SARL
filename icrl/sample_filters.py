@@ -44,7 +44,7 @@ def mask_rounds(args, sample_groups) -> None:
                 {int(sample.index) for sample in grouped_bucket if sample.index is not None}
             )
             logger.debug(
-                "Masked EvoCritic prompt-group bucket %s with mean_reward=%.4f, has_success=%s, size=%d, episode_indices=%s",
+                "Masked icrl prompt-group bucket %s with mean_reward=%.4f, has_success=%s, size=%d, episode_indices=%s",
                 bucket_key,
                 mean_reward,
                 has_success,
@@ -53,7 +53,7 @@ def mask_rounds(args, sample_groups) -> None:
             )
 
     logger.info(
-        "EvoCritic sample filter masked %d buckets and %d samples with threshold %.3f",
+        "icrl sample filter masked %d buckets and %d samples with threshold %.3f",
         masked_bucket_count,
         masked_sample_count,
         threshold,

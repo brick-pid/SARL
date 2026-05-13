@@ -114,7 +114,7 @@ def _log_reward_metrics(metrics: dict, prefix: str, samples) -> None:
     for sample in samples:
         data_source = sample.metadata.get("data_source")
         if data_source is None:
-            raise ValueError("sample.metadata['data_source'] must not be None for EvoCritic logging")
+            raise ValueError("sample.metadata['data_source'] must not be None for icrl logging")
         role = sample.metadata.get("role", "unknown")
         role_counts[(data_source, role)] += 1
         subset = sample.metadata.get("subset")

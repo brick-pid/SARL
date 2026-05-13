@@ -1,8 +1,8 @@
-# EvoCritic Design
+# icrl Design
 
 ## Goals
 
-`evocritic/` is a clean refactor of the current `experiments/` rollout logic for a new multi-role training setup:
+`icrl/` is a clean refactor of the current `experiments/` rollout logic for a new multi-role training setup:
 
 1. Keep Hydra-based experiment configuration.
 2. Keep prompt templates decoupled in a dedicated directory.
@@ -213,7 +213,7 @@ The enclosed text is fed to the next executor round as the previous critic feedb
 ## Directory Layout
 
 ```text
-evocritic/
+icrl/
   README.md
   __init__.py
   hydra_runner.py
@@ -232,7 +232,7 @@ evocritic/
     checkpoint/
     config.yaml
     custom/
-      evocritic.yaml
+      icrl.yaml
     eval/
     gpu/
     logging/
@@ -310,15 +310,15 @@ This refactor intentionally reuses stable pieces from `experiments/`:
 - basic multi-turn executor loop patterns
 - Hydra CLI argument rendering helpers
 
-But the Hydra config tree itself is now copied into `evocritic/hydra_conf/` and maintained independently.
+But the Hydra config tree itself is now copied into `icrl/hydra_conf/` and maintained independently.
 
 In particular:
 
-- `evocritic/hydra_conf/config.yaml` is the standalone Hydra entry config
-- `evocritic/hydra_conf/paths/local.yaml` writes outputs under `evocritic/runs/...`
-- `evocritic/hydra_conf/custom/evocritic.yaml` contains the EvoCritic-specific custom knobs
+- `icrl/hydra_conf/config.yaml` is the standalone Hydra entry config
+- `icrl/hydra_conf/paths/local.yaml` writes outputs under `icrl/runs/...`
+- `icrl/hydra_conf/custom/icrl.yaml` contains the icrl-specific custom knobs
 
-What changes in `evocritic/` is the orchestration boundary:
+What changes in `icrl/` is the orchestration boundary:
 
 - no more verifier logic hidden as a special subagent path inside one loop
 - reward ownership is explicit by role

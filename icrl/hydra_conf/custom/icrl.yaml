@@ -1,8 +1,8 @@
-name: evocritic
+name: icrl
 env_name: alfworld
-reward_process: evocritic.rewards2.post_process_rewards
+reward_process: icrl.rewards2.post_process_rewards
 custom_config:
-  generate: evocritic
+  generate: icrl
   reward_norm: role_norm
   max_rounds: 2
   max_env_turns: 30
